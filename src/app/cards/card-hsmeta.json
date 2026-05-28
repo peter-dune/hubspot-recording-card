@@ -6,7 +6,7 @@
     "location": "crm.record.tab",
     "entrypoint": "/app/cards/NewCard.tsx",
     "objectTypes": [
-      "p_203299743"
+      "p_recordings"
     ]
   }
 }
