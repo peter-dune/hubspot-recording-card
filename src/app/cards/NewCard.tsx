@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   hubspot,
+  useExtensionApi,
   Text,
   LoadingSpinner,
   ErrorState,
@@ -9,34 +10,26 @@ import {
 } from "@hubspot/ui-extensions";
 // @ts-ignore — experimental export
 import { Iframe } from "@hubspot/ui-extensions/experimental";
-import type { CrmContext, ExtensionPointApiActions } from "@hubspot/ui-extensions";
 
-const PLAYER_BASE = "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app";
+const PLAYER_BASE =
+  "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app";
 
-interface CrmExtensionProps {
-  context: CrmContext;
-  actions: ExtensionPointApiActions<"crm.record.tab">;
-  fetchCrmObjectProperties: (properties: string[]) => Promise<Record<string, string>>;
-}
-
-hubspot.extend<"crm.record.tab">(
-  ({ context, actions, fetchCrmObjectProperties }: CrmExtensionProps) => (
-    <RecordingCard context={context} actions={actions} fetchCrmObjectProperties={fetchCrmObjectProperties} />
-  )
-);
+hubspot.extend(() => <RecordingCard />);
 
 function extractEngagementId(url: string): string | null {
   const match = url.match(/\/engagement\/(\d+)/);
   return match ? match[1] : null;
 }
 
-const RecordingCard = ({ fetchCrmObjectProperties }: CrmExtensionProps) => {
+const RecordingCard = () => {
+  const { actions } = useExtensionApi<"crm.record.tab">();
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchCrmObjectProperties(["recording_url"])
+    actions
+      .fetchCrmObjectProperties(["recording_url"])
       .then((props) => {
         const recordingUrl = props["recording_url"];
         if (!recordingUrl) {
