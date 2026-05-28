@@ -61,5 +61,5 @@ const RecordingCard = () => {
     );
   }
 
-  return <Iframe src={playerUrl} height="lg" />;
+  return <Iframe src={playerUrl} height="sm" />;
 };
