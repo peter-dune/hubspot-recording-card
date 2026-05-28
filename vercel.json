@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd player && npm run build",
-  "outputDirectory": "player/.next",
-  "installCommand": "cd player && npm install",
-  "framework": "nextjs"
-}
