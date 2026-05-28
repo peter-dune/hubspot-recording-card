@@ -3,7 +3,7 @@
   "type": "app",
   "config": {
     "description": "An example to demonstrate how to build a static private app with developer projects.",
-    "name": "hubspot-recording-card-App",
+    "name": "RevOps Central",
     "distribution": "private",
     "auth": {
       "type": "static",
