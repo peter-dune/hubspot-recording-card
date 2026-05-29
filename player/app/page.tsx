@@ -182,6 +182,29 @@ export default function Page() {
   const colorMap = useRef(new Map<string, string>());
   const hasTimestamps = segments.some(s => s.startsAt >= 0);
 
+  // Once video duration is known, refetch with duration for estimated timestamps
+  const didFetchWithDuration = useRef(false);
+  const fetchData = useCallback((dur?: number) => {
+    const p = new URLSearchParams(window.location.search);
+    const engagementId = p.get("engagementId");
+    const recordId = p.get("recordId");
+    if (!engagementId) { setError("No engagementId provided."); setLoading(false); return; }
+    const qs = new URLSearchParams({ engagementId });
+    if (recordId) qs.set("recordId", recordId);
+    if (dur) qs.set("duration", String(dur));
+    fetch(`/api/recording-data?${qs}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        if (!data.videoUrl) throw new Error("No video URL.");
+        setVideoUrl(data.videoUrl);
+        setMetadata(data.metadata || {});
+        setSegments(data.segments || []);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const engagementId = p.get("engagementId");
@@ -273,7 +296,16 @@ export default function Page() {
               src={videoUrl}
               style={{ width: "100%", height: "100%", display: "block" }}
               onTimeUpdate={onTimeUpdate}
-              onLoadedMetadata={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
+              onLoadedMetadata={() => {
+                if (!videoRef.current) return;
+                const dur = videoRef.current.duration;
+                setDuration(dur);
+                // Refetch with duration to get estimated timestamps if none available
+                if (!didFetchWithDuration.current && dur > 0) {
+                  didFetchWithDuration.current = true;
+                  fetchData(dur);
+                }
+              }}
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onVolumeChange={() => { if (videoRef.current) { setVol(videoRef.current.volume); setMuted(videoRef.current.muted); } }}
