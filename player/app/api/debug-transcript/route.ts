@@ -31,10 +31,17 @@ export async function GET(req: NextRequest) {
     let txData: unknown = null;
     let txStatus = 0;
     try {
-      const txRes = await fetch(
-        `https://api.hubapi.com/crm/extensions/calling/2026-03/transcripts/${transcriptionId}`,
+      // Try both US and EU endpoints
+      let txRes = await fetch(
+        `https://api-eu1.hubspot.com/crm/extensions/calling/2026-03/transcripts/${transcriptionId}`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
       );
+      if (txRes.status === 404) {
+        txRes = await fetch(
+          `https://api.hubapi.com/crm/v3/extensions/calling/transcripts/${transcriptionId}`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
+        );
+      }
       txStatus = txRes.status;
       const text = await txRes.text();
       txData = text.slice(0, 2000);
