@@ -6,8 +6,11 @@ import {
   LoadingSpinner,
   ErrorState,
   Flex,
+  Link,
 } from "@hubspot/ui-extensions";
-import { Iframe } from "@hubspot/ui-extensions/experimental";
+
+const PLAYER_BASE =
+  "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app";
 
 hubspot.extend(() => <RecordingCard />);
 
@@ -17,16 +20,16 @@ function extractEngagementId(url: string): string | null {
 }
 
 const RecordingCard = () => {
-  const { actions, context, runServerlessFunction } =
-    useExtensionApi<"crm.record.tab">();
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const { actions, context } = useExtensionApi<"crm.record.tab">();
+  const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [title, setTitle] = useState<string>("Call Recording");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     actions
-      .fetchCrmObjectProperties(["recording_url"])
-      .then(async (props) => {
+      .fetchCrmObjectProperties(["recording_url", "call_title", "call_name", "host", "call_date"])
+      .then((props) => {
         const recordingUrl = props["recording_url"];
         if (!recordingUrl) {
           setError("No recording URL on this record.");
@@ -38,21 +41,16 @@ const RecordingCard = () => {
           return;
         }
 
-        const result = await runServerlessFunction({
-          name: "hubspot_recording_card_app_function",
-          parameters: {
-            engagementId,
-            portalId: String(context.portal.id),
-          },
-        });
+        const callTitle = props["call_title"] || props["call_name"] || "Call Recording";
+        setTitle(callTitle);
 
-        if (result.status === "SUCCESS" && result.response?.url) {
-          setVideoUrl(result.response.url);
-        } else {
-          setError(result.response?.error || "Failed to fetch signed video URL.");
-        }
+        const recordId = context.crm.objectId;
+        const params = new URLSearchParams({ engagementId });
+        if (recordId) params.set("recordId", String(recordId));
+
+        setPlayerUrl(`${PLAYER_BASE}?${params.toString()}`);
       })
-      .catch((e) => setError("Failed to load recording: " + e.message))
+      .catch(() => setError("Failed to load recording."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -64,7 +62,7 @@ const RecordingCard = () => {
     );
   }
 
-  if (error || !videoUrl) {
+  if (error || !playerUrl) {
     return (
       <ErrorState title="Recording unavailable">
         <Text>{error ?? "No recording found."}</Text>
@@ -72,5 +70,15 @@ const RecordingCard = () => {
     );
   }
 
-  return <Iframe src={videoUrl} height="md" />;
+  return (
+    <Flex direction="column" gap="medium">
+      <Text format={{ fontWeight: "bold" }}>{title}</Text>
+      <Text variant="microcopy">
+        Video + transcript side by side in a new tab.
+      </Text>
+      <Link href={playerUrl} target="blank">
+        ▶ Open Recording Player
+      </Link>
+    </Flex>
+  );
 };
