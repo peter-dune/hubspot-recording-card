@@ -6,6 +6,7 @@ import {
   LoadingSpinner,
   ErrorState,
   Flex,
+  Box,
   Button,
   Tag,
   Divider,
@@ -131,7 +132,7 @@ const RecordingCard = () => {
 
       {/* Play button */}
       <Button
-        variant="primary"
+        variant="secondary"
         onClick={() =>
           actions.openIframeModal({
             uri: playerUrl,
