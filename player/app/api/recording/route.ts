@@ -18,11 +18,10 @@ export async function GET(req: NextRequest) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
+    // Use manual redirect to capture the Location header
     res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: "manual",
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -31,13 +30,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Fetch failed: ${msg}` }, { status: 500 });
   }
 
+  // If it's a redirect, the Location header IS the media URL
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location");
+    if (location) {
+      return NextResponse.json({ url: location });
+    }
+    return NextResponse.json({ error: "Redirect with no Location header", status: res.status }, { status: 502 });
+  }
+
   const text = await res.text();
-  // Truncate to avoid sending huge HTML pages
   const preview = text.slice(0, 500);
 
   if (!res.ok) {
     return NextResponse.json(
-      { error: `HubSpot ${res.status}`, preview },
+      { error: `HubSpot ${res.status}`, preview, headers: Object.fromEntries(res.headers.entries()) },
       { status: res.status }
     );
   }
@@ -50,7 +57,6 @@ export async function GET(req: NextRequest) {
     const data = JSON.parse(text);
     return NextResponse.json(data);
   } catch {
-    // Plain URL string or non-JSON
     const trimmed = text.trim();
     if (trimmed.startsWith("http")) {
       return NextResponse.json({ url: trimmed });
