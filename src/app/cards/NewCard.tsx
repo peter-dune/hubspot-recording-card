@@ -6,8 +6,8 @@ import {
   LoadingSpinner,
   ErrorState,
   Flex,
+  Button,
 } from "@hubspot/ui-extensions";
-import { Iframe } from "@hubspot/ui-extensions/experimental";
 
 const PLAYER_BASE =
   "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app";
@@ -61,5 +61,21 @@ const RecordingCard = () => {
     );
   }
 
-  return <Iframe src={playerUrl} height="sm" />;
+  return (
+    <Flex direction="column" align="center" justify="center" gap="small">
+      <Button
+        variant="primary"
+        onClick={() =>
+          actions.openIframeModal({
+            uri: playerUrl,
+            height: 500,
+            width: 900,
+            title: "Call Recording",
+          })
+        }
+      >
+        ▶ Play Recording
+      </Button>
+    </Flex>
+  );
 };
