@@ -6,11 +6,12 @@ import {
   LoadingSpinner,
   ErrorState,
   Flex,
-  Box,
   Button,
   Tag,
   Divider,
   Heading,
+  Statistics,
+  StatisticsItem,
 } from "@hubspot/ui-extensions";
 
 const PLAYER_BASE =
@@ -26,19 +27,14 @@ function extractEngagementId(url: string): string | null {
 function formatDate(raw: string): string {
   if (!raw) return "";
   try {
-    // HubSpot returns datetime as ms timestamp or ISO string
     const ts = Number(raw);
     const d = isNaN(ts) ? new Date(raw) : new Date(ts);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   } catch { return ""; }
 }
 
-interface Contact {
-  id: string;
-  name: string;
-  title: string;
-}
+interface Contact { id: string; name: string; title: string; }
 
 const RecordingCard = () => {
   const { actions, context, runServerlessFunction } = useExtensionApi<"crm.record.tab">();
@@ -53,7 +49,6 @@ const RecordingCard = () => {
   useEffect(() => {
     const recordId = context.crm.objectId;
 
-    // Fetch properties + associations in parallel
     Promise.all([
       actions.fetchCrmObjectProperties(["recording_url", "call_title", "call_name", "host", "call_date"]),
       recordId
@@ -102,16 +97,17 @@ const RecordingCard = () => {
   }
 
   return (
-    <Flex direction="column" gap="small">
+    <Flex direction="column" gap="medium">
 
       {/* Title */}
-      {title && <Heading level={4}>{title}</Heading>}
+      {title && <Heading level={3}>{title}</Heading>}
 
-      {/* Meta tags */}
-      <Flex direction="row" gap="extra-small" wrap="wrap">
-        {date && <Tag variant="info">{date}</Tag>}
-        {host && <Tag>🎙 {host}</Tag>}
-      </Flex>
+      {/* Stats row */}
+      <Statistics>
+        {date && <StatisticsItem label="Date" number={date} />}
+        {host && <StatisticsItem label="Host" number={host} />}
+        {contacts.length > 0 && <StatisticsItem label="Participants" number={contacts.length} />}
+      </Statistics>
 
       {/* Participants */}
       {contacts.length > 0 && (
@@ -130,22 +126,19 @@ const RecordingCard = () => {
 
       <Divider />
 
-      {/* Play button — auto width */}
-      <Flex direction="row">
-        <Button
-          variant="secondary"
-          onClick={() =>
-            actions.openIframeModal({
-              uri: playerUrl,
-              height: 600,
-              width: 1100,
-              title: title || "Call Recording",
-            })
-          }
-        >
-          ▶  Play Recording
-        </Button>
-      </Flex>
+      <Button
+        variant="secondary"
+        onClick={() =>
+          actions.openIframeModal({
+            uri: playerUrl,
+            height: 700,
+            width: 1200,
+            title: title || "Call Recording",
+          })
+        }
+      >
+        ▶  Play Recording
+      </Button>
 
     </Flex>
   );
