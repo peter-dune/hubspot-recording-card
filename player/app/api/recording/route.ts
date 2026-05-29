@@ -16,18 +16,28 @@ export async function GET(req: NextRequest) {
 
   let res: Response;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
     });
-  } catch (e) {
-    return NextResponse.json({ error: `Fetch failed: ${e}` }, { status: 500 });
+    clearTimeout(timeout);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: `Fetch failed: ${msg}` }, { status: 500 });
   }
 
   const text = await res.text();
+  // Truncate to avoid sending huge HTML pages
+  const preview = text.slice(0, 500);
 
   if (!res.ok) {
     return NextResponse.json(
-      { error: `HubSpot error ${res.status}`, body: text },
+      { error: `HubSpot ${res.status}`, preview },
       { status: res.status }
     );
   }
@@ -40,7 +50,11 @@ export async function GET(req: NextRequest) {
     const data = JSON.parse(text);
     return NextResponse.json(data);
   } catch {
-    // Maybe it's a plain URL string
-    return NextResponse.json({ url: text.trim() });
+    // Plain URL string or non-JSON
+    const trimmed = text.trim();
+    if (trimmed.startsWith("http")) {
+      return NextResponse.json({ url: trimmed });
+    }
+    return NextResponse.json({ error: "Non-JSON response", preview }, { status: 502 });
   }
 }

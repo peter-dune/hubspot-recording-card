@@ -6,7 +6,6 @@ export default function Page() {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [rawResponse, setRawResponse] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -17,24 +16,24 @@ export default function Page() {
       setLoading(false);
       return;
     }
-    fetch(`/api/recording?engagementId=${engagementId}`)
-      .then((r) => r.text())
-      .then((text) => {
-        setRawResponse(text);
-        const data = JSON.parse(text);
-        if (data.error) throw new Error(`${data.error} — ${data.body || ""}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    fetch(`/api/recording?engagementId=${engagementId}`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error + (data.preview ? `: ${data.preview}` : ""));
         const mediaUrl =
           data.url ||
           data.externalUrl ||
           data.recordingUrl ||
-          data.signedUrl ||
-          data.redirectUrl ||
-          Object.values(data).find((v) => typeof v === "string" && v.startsWith("http"));
-        if (!mediaUrl) throw new Error("No URL found in response: " + text);
-        setUrl(mediaUrl as string);
+          data.signedUrl;
+        if (!mediaUrl) throw new Error("No URL in response. Keys: " + Object.keys(data).join(", "));
+        setUrl(mediaUrl);
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) => setError(e.name === "AbortError" ? "Request timed out" : e.message))
+      .finally(() => { clearTimeout(timeout); setLoading(false); });
   }, []);
 
   if (loading) {
@@ -48,14 +47,7 @@ export default function Page() {
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center bg-black p-4">
-        <div className="text-center">
-          <p className="text-red-400 text-sm mb-2">{error}</p>
-          {rawResponse && (
-            <pre className="text-gray-400 text-xs text-left max-w-lg overflow-auto">
-              {rawResponse}
-            </pre>
-          )}
-        </div>
+        <p className="text-red-400 text-sm text-center max-w-md">{error}</p>
       </div>
     );
   }
@@ -63,7 +55,7 @@ export default function Page() {
   if (!url) {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
-        <p className="text-yellow-400 text-sm">Raw response: {rawResponse}</p>
+        <p className="text-yellow-400 text-sm">No recording URL found.</p>
       </div>
     );
   }
