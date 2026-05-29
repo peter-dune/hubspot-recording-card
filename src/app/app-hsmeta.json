@@ -21,8 +21,7 @@
         "https://api.hubapi.com"
       ],
       "iframe": [
-        "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app",
-        "https://*.vercel.app"
+        "https://hubspot-recording-card-git-main-peter-6714s-projects.vercel.app"
       ],
       "img": []
     },
