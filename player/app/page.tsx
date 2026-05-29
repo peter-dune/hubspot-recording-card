@@ -253,10 +253,6 @@ export default function Page() {
       {/* ── Header ── */}
       <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid var(--border-weaker)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)", padding: "4px 8px", borderRadius: 5 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "pulse 2s ease infinite" }} />
-            REC
-          </div>
           <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{title}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>
