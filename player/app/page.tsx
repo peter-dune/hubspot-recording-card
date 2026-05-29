@@ -1,76 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-interface Metadata {
-  transcript?: string;
-  call_title?: string;
-  host?: string;
-  call_date?: string;
-  call_name?: string;
-}
-
-interface TranscriptLine {
+interface Segment {
   speaker: string;
   text: string;
-  isRep: boolean;
+  startsAt: number; // ms, -1 if unknown
+  endsAt: number;
 }
 
-function parseTranscript(raw: string): TranscriptLine[] {
-  if (!raw) return [];
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const colonIdx = line.indexOf(":");
-      if (colonIdx > 0) {
-        const speaker = line.slice(0, colonIdx).trim();
-        const text = line.slice(colonIdx + 1).trim();
-        const isRep =
-          /rep|agent|sales|host|advisor|ae|sdr|bdr/i.test(speaker) ||
-          (!speaker.toLowerCase().includes("customer") &&
-            !speaker.toLowerCase().includes("prospect") &&
-            !speaker.toLowerCase().includes("client"));
-        return { speaker, text, isRep };
-      }
-      return { speaker: "", text: line, isRep: false };
-    });
+interface Metadata {
+  call_title?: string;
+  call_name?: string;
+  host?: string;
+  call_date?: string;
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "";
   try {
     return new Date(iso).toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
-  } catch {
-    return iso;
-  }
+  } catch { return iso; }
 }
+
+function formatTime(ms: number): string {
+  if (ms < 0) return "";
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+const SPEAKER_COLORS = [
+  { text: "text-blue-400", bg: "bg-blue-900/30", border: "border-blue-800/50", dot: "bg-blue-400" },
+  { text: "text-emerald-400", bg: "bg-emerald-900/30", border: "border-emerald-800/50", dot: "bg-emerald-400" },
+  { text: "text-violet-400", bg: "bg-violet-900/30", border: "border-violet-800/50", dot: "bg-violet-400" },
+  { text: "text-amber-400", bg: "bg-amber-900/30", border: "border-amber-800/50", dot: "bg-amber-400" },
+];
 
 export default function Page() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [segments, setSegments] = useState<Segment[]>([]);
   const [metadata, setMetadata] = useState<Metadata>({});
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeIdx, setActiveIdx] = useState<number>(-1);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [hasTimestamps, setHasTimestamps] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const speakerMap = useRef<Map<string, number>>(new Map());
+
+  const getSpeakerColor = (speaker: string) => {
+    if (!speakerMap.current.has(speaker)) {
+      speakerMap.current.set(speaker, speakerMap.current.size % SPEAKER_COLORS.length);
+    }
+    return SPEAKER_COLORS[speakerMap.current.get(speaker)!];
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const engagementId = params.get("engagementId");
     const recordId = params.get("recordId");
-
-    if (!engagementId) {
-      setError("No engagementId provided.");
-      setLoading(false);
-      return;
-    }
+    if (!engagementId) { setError("No engagementId provided."); setLoading(false); return; }
 
     const qs = new URLSearchParams({ engagementId });
     if (recordId) qs.set("recordId", recordId);
@@ -82,11 +78,42 @@ export default function Page() {
         if (!data.videoUrl) throw new Error("No video URL returned.");
         setVideoUrl(data.videoUrl);
         setMetadata(data.metadata || {});
-        setTranscript(parseTranscript(data.metadata?.transcript || ""));
+        const segs: Segment[] = data.segments || [];
+        setSegments(segs);
+        setHasTimestamps(segs.some((s) => s.startsAt >= 0));
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Sync transcript to video time
+  const onTimeUpdate = useCallback(() => {
+    if (!hasTimestamps || !videoRef.current) return;
+    const currentMs = videoRef.current.currentTime * 1000;
+    let found = -1;
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].startsAt <= currentMs) { found = i; break; }
+    }
+    if (found !== activeIdx) {
+      setActiveIdx(found);
+      if (autoScroll && found >= 0 && lineRefs.current[found]) {
+        lineRefs.current[found]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+  }, [segments, activeIdx, autoScroll, hasTimestamps]);
+
+  // Jump video to segment time
+  const seekTo = (startsAt: number) => {
+    if (videoRef.current && startsAt >= 0) {
+      videoRef.current.currentTime = startsAt / 1000;
+      videoRef.current.play();
+    }
+  };
+
+  // Detect manual scroll — disable auto-scroll
+  const onTranscriptScroll = () => {
+    setAutoScroll(false);
+  };
 
   if (loading) {
     return (
@@ -108,91 +135,106 @@ export default function Page() {
   }
 
   const title = metadata.call_title || metadata.call_name || "Call Recording";
-  const host = metadata.host;
-  const date = metadata.call_date ? formatDate(metadata.call_date) : null;
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
       {/* Header */}
-      <div className="flex-none px-6 py-4 border-b border-gray-800 bg-gray-900">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-white">{title}</h1>
-            <div className="flex gap-4 mt-1">
-              {host && (
-                <span className="text-sm text-gray-400">
-                  <span className="text-gray-500">Host</span> · {host}
-                </span>
-              )}
-              {date && (
-                <span className="text-sm text-gray-400">
-                  <span className="text-gray-500">Date</span> · {date}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              Call Recording
-            </span>
+      <div className="flex-none px-6 py-3.5 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
+        <div>
+          <h1 className="text-base font-semibold text-white">{title}</h1>
+          <div className="flex gap-3 mt-0.5">
+            {metadata.host && <span className="text-xs text-gray-400">🎙 {metadata.host}</span>}
+            {metadata.call_date && <span className="text-xs text-gray-500">{formatDate(metadata.call_date)}</span>}
           </div>
         </div>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 font-medium border border-blue-500/20">
+          Call Recording
+        </span>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left — Video */}
+        {/* Video panel */}
         <div className="flex flex-col w-[55%] bg-black border-r border-gray-800">
-          <div className="flex-1 flex items-center justify-center bg-black">
+          <div className="flex-1 flex items-center justify-center">
             <video
               ref={videoRef}
               src={videoUrl}
               controls
-              autoPlay={false}
-              className="w-full max-h-full"
-              style={{ maxHeight: "calc(100vh - 130px)" }}
+              onTimeUpdate={onTimeUpdate}
+              className="w-full"
+              style={{ maxHeight: "calc(100vh - 65px)" }}
             />
           </div>
         </div>
 
-        {/* Right — Transcript */}
+        {/* Transcript panel */}
         <div className="flex flex-col w-[45%]">
-          <div className="flex-none px-5 py-3 border-b border-gray-800 bg-gray-900/50">
-            <h2 className="text-sm font-medium text-gray-300 uppercase tracking-wider">
-              Transcript
-            </h2>
+          <div className="flex-none px-5 py-3 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Transcript</h2>
+            <div className="flex items-center gap-3">
+              {hasTimestamps && (
+                <button
+                  onClick={() => setAutoScroll((v) => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    autoScroll
+                      ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                      : "bg-gray-800 text-gray-500 border-gray-700"
+                  }`}
+                >
+                  {autoScroll ? "⟳ Auto-scroll on" : "⟳ Auto-scroll off"}
+                </button>
+              )}
+              {!hasTimestamps && (
+                <span className="text-xs text-gray-600 italic">No timestamps</span>
+              )}
+            </div>
           </div>
+
           <div
             ref={transcriptRef}
-            className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
-            style={{ scrollbarColor: "#374151 transparent" }}
+            onScroll={onTranscriptScroll}
+            className="flex-1 overflow-y-auto px-5 py-5 space-y-1"
+            style={{ scrollbarColor: "#374151 transparent", scrollbarWidth: "thin" }}
           >
-            {transcript.length === 0 ? (
-              <p className="text-gray-500 text-sm italic">No transcript available.</p>
+            {segments.length === 0 ? (
+              <p className="text-gray-500 text-sm italic pt-4">No transcript available.</p>
             ) : (
-              transcript.map((line, i) => (
-                <div key={i} className={`flex flex-col gap-1 ${line.isRep ? "" : "items-end"}`}>
-                  {line.speaker && (
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wider ${
-                        line.isRep ? "text-blue-400" : "text-emerald-400"
-                      }`}
-                    >
-                      {line.speaker}
-                    </span>
-                  )}
+              segments.map((seg, i) => {
+                const color = getSpeakerColor(seg.speaker);
+                const isActive = i === activeIdx;
+                const showSpeaker = i === 0 || segments[i - 1].speaker !== seg.speaker;
+
+                return (
                   <div
-                    className={`max-w-[90%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                      line.isRep
-                        ? "bg-gray-800 text-gray-100 rounded-tl-sm"
-                        : "bg-emerald-900/40 text-emerald-50 rounded-tr-sm"
+                    key={i}
+                    ref={(el) => { lineRefs.current[i] = el; }}
+                    className={`group rounded-xl px-4 py-2.5 transition-all duration-200 cursor-pointer border ${
+                      isActive
+                        ? `${color.bg} ${color.border} border shadow-lg`
+                        : "border-transparent hover:bg-gray-800/50"
                     }`}
+                    onClick={() => { seekTo(seg.startsAt); setAutoScroll(true); }}
                   >
-                    {line.text}
+                    {showSpeaker && (
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
+                        <span className={`text-xs font-semibold uppercase tracking-wider ${color.text}`}>
+                          {seg.speaker}
+                        </span>
+                        {seg.startsAt >= 0 && (
+                          <span className="text-xs text-gray-600 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                            {formatTime(seg.startsAt)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className={`text-sm leading-relaxed ${isActive ? "text-white" : "text-gray-300"}`}>
+                      {seg.text}
+                    </p>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
