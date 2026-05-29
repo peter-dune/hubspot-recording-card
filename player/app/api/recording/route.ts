@@ -8,20 +8,39 @@ export async function GET(req: NextRequest) {
 
   const token = process.env.HUBSPOT_ACCESS_TOKEN;
   if (!token) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+    return NextResponse.json({ error: "HUBSPOT_ACCESS_TOKEN not configured" }, { status: 500 });
   }
 
   const portalId = process.env.HUBSPOT_PORTAL_ID || "141496265";
+  const url = `https://api-eu1.hubspot.com/recording/auth/provider/hublets/v1/external-url-retriever/getAuthRecording/portal/${portalId}/engagement/${engagementId}`;
 
-  const res = await fetch(
-    `https://api-eu1.hubspot.com/recording/auth/provider/hublets/v1/external-url-retriever/getAuthRecording/portal/${portalId}/engagement/${engagementId}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  if (!res.ok) {
-    return NextResponse.json({ error: `HubSpot error: ${res.status}` }, { status: res.status });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    return NextResponse.json({ error: `Fetch failed: ${e}` }, { status: 500 });
   }
 
-  const data = await res.json();
-  return NextResponse.json(data);
+  const text = await res.text();
+
+  if (!res.ok) {
+    return NextResponse.json(
+      { error: `HubSpot error ${res.status}`, body: text },
+      { status: res.status }
+    );
+  }
+
+  if (!text) {
+    return NextResponse.json({ error: "Empty response from HubSpot" }, { status: 502 });
+  }
+
+  try {
+    const data = JSON.parse(text);
+    return NextResponse.json(data);
+  } catch {
+    // Maybe it's a plain URL string
+    return NextResponse.json({ url: text.trim() });
+  }
 }
