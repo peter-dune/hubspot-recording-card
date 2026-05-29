@@ -3,6 +3,6 @@
   "type": "app-function",
   "config": {
     "entrypoint": "/app/functions/NewFunction.js",
-    "secretKeys": []
+    "secretKeys": ["HUBSPOT_SERVICE_KEY"]
   }
 }
