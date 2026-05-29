@@ -7,30 +7,24 @@ export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_ACCESS_TOKEN;
   if (!token) return NextResponse.json({ error: "No token" }, { status: 500 });
 
-  // Try 1: direct by transcriptId = engagementId
-  const r1 = await fetch(
-    `https://api.hubapi.com/crm/extensions/calling/2026-03/transcripts/${engagementId}`,
+  // Step 1: Get transcription ID from call object
+  const callRes = await fetch(
+    `https://api.hubapi.com/crm/v3/objects/calls/${engagementId}?properties=hs_call_transcription_id`,
     { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
   );
-  const t1 = await r1.text();
+  const callData = await callRes.json();
+  const transcriptionId = callData?.properties?.hs_call_transcription_id;
 
-  // Try 2: search by engagementId
-  const r2 = await fetch(
-    `https://api.hubapi.com/crm/extensions/calling/2026-03/transcripts?engagementId=${engagementId}`,
+  if (!transcriptionId) {
+    return NextResponse.json({ error: "No transcription ID found", callData });
+  }
+
+  // Step 2: Fetch transcript with timestamps
+  const txRes = await fetch(
+    `https://api.hubapi.com/crm/extensions/calling/2026-03/transcripts/${transcriptionId}`,
     { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
   );
-  const t2 = await r2.text();
+  const txData = await txRes.json();
 
-  // Try 3: older v3 endpoint
-  const r3 = await fetch(
-    `https://api.hubapi.com/crm/v3/extensions/calling/transcripts?engagementId=${engagementId}`,
-    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
-  );
-  const t3 = await r3.text();
-
-  return NextResponse.json({
-    try1: { status: r1.status, body: t1.slice(0, 500) },
-    try2: { status: r2.status, body: t2.slice(0, 500) },
-    try3: { status: r3.status, body: t3.slice(0, 500) },
-  });
+  return NextResponse.json({ transcriptionId, status: txRes.status, data: txData });
 }
