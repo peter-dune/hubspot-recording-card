@@ -10,6 +10,58 @@ async function get(url: string, token: string) {
   return res;
 }
 
+// Parse timestamped transcript text into segments
+// Supports formats:
+//   [00:01:23] Speaker: text
+//   [00:01:23.456] Speaker: text
+//   00:01:23 Speaker: text
+//   1:23 Speaker: text
+//   0:01:23 Speaker - text
+function parseTimestampedTranscript(raw: string) {
+  if (!raw?.trim()) return [];
+
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const segments: { speaker: string; text: string; startsAt: number; endsAt: number }[] = [];
+
+  const tsRegex = /^\[?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:[.,](\d+))?\]?\s*/;
+
+  for (const line of lines) {
+    const tsMatch = line.match(tsRegex);
+    if (!tsMatch) continue;
+
+    const [full, h_or_m, m_or_s, s, ms] = tsMatch;
+    let totalMs: number;
+
+    if (s !== undefined) {
+      // h:mm:ss format
+      totalMs = (parseInt(h_or_m) * 3600 + parseInt(m_or_s) * 60 + parseInt(s)) * 1000;
+    } else {
+      // m:ss format
+      totalMs = (parseInt(h_or_m) * 60 + parseInt(m_or_s)) * 1000;
+    }
+    if (ms) totalMs += parseInt(ms.padEnd(3, "0").slice(0, 3));
+
+    const rest = line.slice(full.length);
+    // Split speaker from text: "Speaker: text" or "Speaker - text"
+    const speakerMatch = rest.match(/^([^:\-–]+)[:–\-]\s*(.+)/);
+    if (!speakerMatch) continue;
+
+    const speaker = speakerMatch[1].trim();
+    const text = speakerMatch[2].trim();
+    segments.push({ speaker, text, startsAt: totalMs, endsAt: -1 });
+  }
+
+  // Fill endsAt from next segment's startsAt
+  for (let i = 0; i < segments.length - 1; i++) {
+    segments[i].endsAt = segments[i + 1].startsAt;
+  }
+  if (segments.length > 0) {
+    segments[segments.length - 1].endsAt = segments[segments.length - 1].startsAt + 10000;
+  }
+
+  return segments;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const engagementId = searchParams.get("engagementId");
@@ -41,37 +93,13 @@ export async function GET(req: NextRequest) {
     }
   } catch {}
 
-  // 2. Fetch timestamped transcript from HubSpot Calling Transcript API
-  let segments: { speaker: string; text: string; startsAt: number; endsAt: number }[] = [];
-  try {
-    const tRes = await get(
-      `https://api.hubapi.com/crm/v3/extensions/calling/transcripts?engagementId=${engagementId}`,
-      token
-    );
-    if (tRes.ok) {
-      const tData = await tRes.json();
-      const transcript = tData.results?.[0];
-      if (transcript?.segments) {
-        segments = transcript.segments.map((s: {
-          speakerDisplayName?: string; speaker?: string;
-          text?: string; words?: { word: string }[];
-          startOffset?: number; endOffset?: number;
-          startsAt?: number; endsAt?: number;
-        }) => ({
-          speaker: s.speakerDisplayName || s.speaker || "Speaker",
-          text: s.text || s.words?.map((w) => w.word).join(" ") || "",
-          startsAt: s.startOffset ?? s.startsAt ?? 0,
-          endsAt: s.endOffset ?? s.endsAt ?? 0,
-        }));
-      }
-    }
-  } catch {}
-
-  // 3. Fetch recording metadata
+  // 2. Fetch recording metadata + timestamped transcript
   let metadata: Record<string, string> = {};
+  let segments: { speaker: string; text: string; startsAt: number; endsAt: number }[] = [];
+
   if (recordId) {
     try {
-      const props = ["call_title", "host", "call_date", "call_name", "transcript"];
+      const props = ["call_title", "host", "call_date", "call_name", "transcript", "transcript_timed"];
       const metaRes = await get(
         `https://api.hubapi.com/crm/v3/objects/p_recordings/${recordId}?properties=${props.join(",")}`,
         token
@@ -79,28 +107,31 @@ export async function GET(req: NextRequest) {
       if (metaRes.ok) {
         const data = await metaRes.json();
         metadata = data.properties || {};
+
+        // Use timestamped transcript if available, else fall back to plain
+        if (metadata.transcript_timed?.trim()) {
+          segments = parseTimestampedTranscript(metadata.transcript_timed);
+        } else if (metadata.transcript?.trim()) {
+          // Plain transcript — no timestamps
+          segments = metadata.transcript
+            .split("\n")
+            .map((line: string) => line.trim())
+            .filter(Boolean)
+            .map((line: string) => {
+              const colonIdx = line.indexOf(":");
+              if (colonIdx > 0) {
+                return {
+                  speaker: line.slice(0, colonIdx).trim(),
+                  text: line.slice(colonIdx + 1).trim(),
+                  startsAt: -1,
+                  endsAt: -1,
+                };
+              }
+              return { speaker: "", text: line, startsAt: -1, endsAt: -1 };
+            });
+        }
       }
     } catch {}
-  }
-
-  // Fall back to plain transcript if no segments
-  if (segments.length === 0 && metadata.transcript) {
-    segments = metadata.transcript
-      .split("\n")
-      .map((line: string) => line.trim())
-      .filter(Boolean)
-      .map((line: string, i: number) => {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx > 0) {
-          return {
-            speaker: line.slice(0, colonIdx).trim(),
-            text: line.slice(colonIdx + 1).trim(),
-            startsAt: -1, // no timestamp
-            endsAt: -1,
-          };
-        }
-        return { speaker: "", text: line, startsAt: -1, endsAt: -1 };
-      });
   }
 
   return NextResponse.json({ videoUrl, segments, metadata });
