@@ -130,20 +130,22 @@ const RecordingCard = () => {
 
       <Divider />
 
-      {/* Play button */}
-      <Button
-        variant="secondary"
-        onClick={() =>
-          actions.openIframeModal({
-            uri: playerUrl,
-            height: 600,
-            width: 1100,
-            title: title || "Call Recording",
-          })
-        }
-      >
-        ▶  Play Recording
-      </Button>
+      {/* Play button — auto width */}
+      <Flex direction="row">
+        <Button
+          variant="secondary"
+          onClick={() =>
+            actions.openIframeModal({
+              uri: playerUrl,
+              height: 600,
+              width: 1100,
+              title: title || "Call Recording",
+            })
+          }
+        >
+          ▶  Play Recording
+        </Button>
+      </Flex>
 
     </Flex>
   );
