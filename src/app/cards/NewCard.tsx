@@ -7,6 +7,8 @@ import {
   ErrorState,
   Flex,
   Button,
+  Tag,
+  Divider,
 } from "@hubspot/ui-extensions";
 
 const PLAYER_BASE =
@@ -19,10 +21,25 @@ function extractEngagementId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+function formatDate(iso: string): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
 const RecordingCard = () => {
   const { actions, context } = useExtensionApi<"crm.record.tab">();
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
-  const [title, setTitle] = useState<string>("Call Recording");
+  const [title, setTitle] = useState<string>("");
+  const [host, setHost] = useState<string>("");
+  const [date, setDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,23 +48,17 @@ const RecordingCard = () => {
       .fetchCrmObjectProperties(["recording_url", "call_title", "call_name", "host", "call_date"])
       .then((props) => {
         const recordingUrl = props["recording_url"];
-        if (!recordingUrl) {
-          setError("No recording URL on this record.");
-          return;
-        }
+        if (!recordingUrl) { setError("No recording URL on this record."); return; }
         const engagementId = extractEngagementId(recordingUrl);
-        if (!engagementId) {
-          setError("Could not parse engagement ID.");
-          return;
-        }
+        if (!engagementId) { setError("Could not parse engagement ID."); return; }
 
-        const callTitle = props["call_title"] || props["call_name"] || "Call Recording";
-        setTitle(callTitle);
+        setTitle(props["call_title"] || props["call_name"] || "");
+        setHost(props["host"] || "");
+        setDate(formatDate(props["call_date"] || ""));
 
-        const recordId = context.crm.objectId;
         const params = new URLSearchParams({ engagementId });
+        const recordId = context.crm.objectId;
         if (recordId) params.set("recordId", String(recordId));
-
         setPlayerUrl(`${PLAYER_BASE}?${params.toString()}`);
       })
       .catch(() => setError("Failed to load recording."))
@@ -57,7 +68,7 @@ const RecordingCard = () => {
   if (loading) {
     return (
       <Flex direction="column" align="center" justify="center">
-        <LoadingSpinner label="Loading recording…" />
+        <LoadingSpinner label="Loading…" />
       </Flex>
     );
   }
@@ -71,8 +82,20 @@ const RecordingCard = () => {
   }
 
   return (
-    <Flex direction="column" gap="medium">
-      <Text format={{ fontWeight: "bold" }}>{title}</Text>
+    <Flex direction="column" gap="small">
+      {/* Metadata row */}
+      <Flex direction="row" gap="small" wrap="wrap">
+        {date && <Tag><Text>{date}</Text></Tag>}
+        {host && <Tag><Text>🎙 {host}</Text></Tag>}
+      </Flex>
+
+      {title && (
+        <Text format={{ fontWeight: "bold" }}>{title}</Text>
+      )}
+
+      <Divider />
+
+      {/* Play button */}
       <Button
         variant="primary"
         onClick={() =>
@@ -80,11 +103,11 @@ const RecordingCard = () => {
             uri: playerUrl,
             height: 600,
             width: 1100,
-            title: title,
+            title: title || "Call Recording",
           })
         }
       >
-        ▶ Play Recording
+        ▶  Play Recording
       </Button>
     </Flex>
   );
