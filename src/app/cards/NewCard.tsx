@@ -6,7 +6,7 @@ import {
   LoadingSpinner,
   ErrorState,
   Flex,
-  Link,
+  Button,
 } from "@hubspot/ui-extensions";
 
 const PLAYER_BASE =
@@ -73,12 +73,19 @@ const RecordingCard = () => {
   return (
     <Flex direction="column" gap="medium">
       <Text format={{ fontWeight: "bold" }}>{title}</Text>
-      <Text variant="microcopy">
-        Video + transcript side by side in a new tab.
-      </Text>
-      <Link href={playerUrl} target="blank">
-        ▶ Open Recording Player
-      </Link>
+      <Button
+        variant="primary"
+        onClick={() =>
+          actions.openIframeModal({
+            uri: playerUrl,
+            height: 600,
+            width: 1100,
+            title: title,
+          })
+        }
+      >
+        ▶ Play Recording
+      </Button>
     </Flex>
   );
 };
