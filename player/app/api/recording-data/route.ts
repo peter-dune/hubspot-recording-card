@@ -66,7 +66,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const engagementId = searchParams.get("engagementId");
   const recordId = searchParams.get("recordId");
-  const videoDuration = parseFloat(searchParams.get("duration") || "0"); // seconds
 
   if (!engagementId) {
     return NextResponse.json({ error: "Missing engagementId" }, { status: 400 });
@@ -113,36 +112,23 @@ export async function GET(req: NextRequest) {
         if (metadata.transcript_timed?.trim()) {
           segments = parseTimestampedTranscript(metadata.transcript_timed);
         } else if (metadata.transcript?.trim()) {
-          // Plain transcript — estimate timestamps from word count if duration provided
-          const lines = metadata.transcript
+          // Plain transcript — no timestamps, show statically
+          segments = metadata.transcript
             .split("\n")
             .map((line: string) => line.trim())
             .filter(Boolean)
             .map((line: string) => {
               const colonIdx = line.indexOf(":");
               if (colonIdx > 0) {
-                return { speaker: line.slice(0, colonIdx).trim(), text: line.slice(colonIdx + 1).trim() };
+                return {
+                  speaker: line.slice(0, colonIdx).trim(),
+                  text: line.slice(colonIdx + 1).trim(),
+                  startsAt: -1,
+                  endsAt: -1,
+                };
               }
-              return { speaker: "", text: line };
+              return { speaker: "", text: line, startsAt: -1, endsAt: -1 };
             });
-
-          if (videoDuration > 0 && lines.length > 0) {
-            // Estimate: assume speaking fills ~85% of duration, distribute by word count
-            const totalWords = lines.reduce((sum, l) => sum + l.text.split(/\s+/).length, 0);
-            const speakingDuration = videoDuration * 0.85 * 1000; // ms
-            let cumWords = 0;
-            segments = lines.map((l, i) => {
-              const words = l.text.split(/\s+/).length;
-              const startsAt = Math.round((cumWords / totalWords) * speakingDuration);
-              cumWords += words;
-              const endsAt = i < lines.length - 1
-                ? Math.round((cumWords / totalWords) * speakingDuration)
-                : videoDuration * 1000;
-              return { ...l, startsAt, endsAt };
-            });
-          } else {
-            segments = lines.map(l => ({ ...l, startsAt: -1, endsAt: -1 }));
-          }
         }
       }
     } catch {}
