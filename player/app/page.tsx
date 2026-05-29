@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  useEffect, useRef, useState, useCallback, ChangeEvent,
-} from "react";
+import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode } from "react";
 
 /* ── types ───────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
@@ -24,7 +22,7 @@ function formatDate(raw: string) {
 }
 function highlight(text: string, q: string) {
   if (!q) return text;
-  const parts: (string | JSX.Element)[] = [];
+  const parts: (string | ReactNode)[] = [];
   let pos = 0;
   const lo = text.toLowerCase();
   const ql = q.toLowerCase();
