@@ -206,6 +206,7 @@ export default function Page() {
   const txRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const colorMap = useRef(new Map<string, string>());
+  const isProgrammaticScroll = useRef(false);
   const hasTimestamps = segments.some(s => s.startsAt >= 0);
 
   useEffect(() => {
@@ -243,7 +244,9 @@ export default function Page() {
     if (found !== activeIdx) {
       setActiveIdx(found);
       if (autoScroll && found >= 0 && lineRefs.current[found]) {
+        isProgrammaticScroll.current = true;
         lineRefs.current[found]?.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
       }
     }
   }, [segments, activeIdx, autoScroll, hasTimestamps]);
@@ -414,7 +417,15 @@ export default function Page() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)" }}>Transcript</span>
               {hasTimestamps && (
-                <button onClick={() => setAutoScroll(a => !a)} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: autoScroll ? "var(--accent)" : "var(--text-disable)", border: `1px solid ${autoScroll ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--border-weaker)"}`, padding: "4px 8px", borderRadius: 99, transition: "all 140ms", background: "none" }}>
+                <button onClick={() => {
+                  const next = !autoScroll;
+                  setAutoScroll(next);
+                  if (next && activeIdx >= 0 && lineRefs.current[activeIdx]) {
+                    isProgrammaticScroll.current = true;
+                    lineRefs.current[activeIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
+                  }
+                }} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: autoScroll ? "var(--accent)" : "var(--text-disable)", border: `1px solid ${autoScroll ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--border-weaker)"}`, padding: "4px 8px", borderRadius: 99, transition: "all 140ms", background: "none" }}>
                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor" }} />
                   {autoScroll ? "Following" : "Paused"}
                 </button>
@@ -431,7 +442,7 @@ export default function Page() {
           </div>
 
           {/* Lines */}
-          <div ref={txRef} onScroll={() => autoScroll && setAutoScroll(false)}
+          <div ref={txRef} onScroll={() => { if (!isProgrammaticScroll.current) setAutoScroll(false); }}
             style={{ flex: 1, overflowY: "auto", padding: "6px 8px 16px", scrollbarWidth: "thin" }}>
             {segments.length === 0 ? (
               <p style={{ color: "var(--text-disable)", fontSize: 13, padding: "20px 8px", fontStyle: "italic" }}>No transcript available.</p>
