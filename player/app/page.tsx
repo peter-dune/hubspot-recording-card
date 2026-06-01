@@ -295,7 +295,7 @@ export default function Page() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: chapters.length > 0 || segments.length > 0 ? "200px 1fr 360px" : "1fr 360px", gap: 12, padding: "14px 18px 18px" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: chapters.length > 0 || segments.length > 0 ? "200px 1fr 440px" : "1fr 440px", gap: 12, padding: "14px 18px 18px" }}>
 
         {/* Left — Talk Time + Chapters (only if data available) */}
         {(chapters.length > 0 || segments.length > 0) && (() => {
@@ -458,41 +458,40 @@ export default function Page() {
                 const color = speakerColor(seg.speaker, colorMap.current);
                 return (
                   <div key={i} ref={el => { lineRefs.current[i] = el; }}
-                    style={{ marginTop: showMeta ? 14 : 3, opacity: isPast && !query ? 0.45 : 1, transition: "opacity 200ms", cursor: seg.startsAt >= 0 ? "pointer" : "default" }}
+                    style={{ marginTop: showMeta ? 18 : 4, opacity: isPast && !query ? 0.4 : 1, transition: "opacity 200ms", cursor: seg.startsAt >= 0 ? "pointer" : "default" }}
                     onClick={() => { if (seg.startsAt >= 0 && videoRef.current) { videoRef.current.currentTime = seg.startsAt / 1000; videoRef.current.play(); setAutoScroll(true); } }}>
                     {/* Speaker header */}
                     {showMeta && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                        {/* Timestamp */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
                         {seg.startsAt >= 0 && (
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", width: 28, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: isActive ? "var(--accent)" : "var(--text-disable)", width: 32, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
                             {fmtMs(seg.startsAt)}
                           </span>
                         )}
-                        {/* Avatar */}
-                        <span style={{ width: 28, height: 28, borderRadius: "50%", background: color, display: "grid", placeItems: "center", color: "#fff", fontSize: 10, fontFamily: "var(--font-mono)", flexShrink: 0, fontWeight: 500 }}>
+                        <span style={{ width: 30, height: 30, borderRadius: "50%", background: color, display: "grid", placeItems: "center", color: "#fff", fontSize: 11, fontFamily: "var(--font-mono)", flexShrink: 0, fontWeight: 600, letterSpacing: "0.01em" }}>
                           {initials(seg.speaker)}
                         </span>
-                        {/* Name */}
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>{seg.speaker}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>{seg.speaker}</span>
                       </div>
                     )}
                     {/* Bubble */}
                     <div style={{
-                      marginLeft: seg.startsAt >= 0 ? 64 : 36,
-                      padding: "9px 13px",
-                      borderRadius: "0 12px 12px 12px",
-                      background: isActive ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "var(--surface-B)",
-                      border: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 25%, transparent)" : "var(--border-weaker)"}`,
-                      borderLeft: isActive ? `3px solid var(--accent)` : `1px solid var(--border-weaker)`,
+                      marginLeft: 41,
+                      padding: "11px 15px",
+                      borderRadius: "4px 14px 14px 14px",
+                      background: isActive ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--surface-B)",
+                      borderTop: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "var(--border-weaker)"}`,
+                      borderRight: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "var(--border-weaker)"}`,
+                      borderBottom: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "var(--border-weaker)"}`,
+                      borderLeft: `3px solid ${isActive ? "var(--accent)" : "var(--border-weaker)"}`,
                       transition: "background 200ms, border-color 200ms",
                     }}>
                       {!showMeta && seg.startsAt >= 0 && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: isActive ? "var(--accent)" : "var(--text-disable)", display: "block", marginBottom: 3 }}>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", display: "block", marginBottom: 4 }}>
                           {fmtMs(seg.startsAt)}
                         </span>
                       )}
-                      <p style={{ fontSize: 13, lineHeight: 1.55, color: isActive ? "var(--text-primary)" : "var(--text-secondary)", margin: 0 }}>
+                      <p style={{ fontSize: 13.5, lineHeight: 1.65, color: isActive ? "var(--text-primary)" : "var(--text-secondary)", margin: 0 }}>
                         {highlight(seg.text, query)}
                       </p>
                     </div>
