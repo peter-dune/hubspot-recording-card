@@ -5,6 +5,31 @@ import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode
 /* ── types ───────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
 interface Metadata { call_title?: string; call_name?: string; host?: string; call_date?: string; }
+interface Chapter { time: string; title: string; }
+
+/* ── talk time calculation ───────────────────────────────────── */
+function calcTalkTime(segments: Segment[]): { speaker: string; pct: number }[] {
+  const totals: Record<string, number> = {};
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!seg.speaker) continue;
+    const dur = seg.endsAt >= 0 && seg.startsAt >= 0 ? seg.endsAt - seg.startsAt : 5000;
+    totals[seg.speaker] = (totals[seg.speaker] || 0) + dur;
+  }
+  const total = Object.values(totals).reduce((a, b) => a + b, 0);
+  if (total === 0) return [];
+  return Object.entries(totals)
+    .map(([speaker, ms]) => ({ speaker, pct: Math.round((ms / total) * 100) }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
+/* ── chapter time to seconds ─────────────────────────────────── */
+function chapterToSec(time: string): number {
+  const parts = time.split(":").map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function fmt(sec: number) {
@@ -161,6 +186,7 @@ export default function Page() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [metadata, setMetadata] = useState<Metadata>({});
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -197,6 +223,7 @@ export default function Page() {
         setVideoUrl(data.videoUrl);
         setMetadata(data.metadata || {});
         setSegments(data.segments || []);
+        setChapters(data.chapters || []);
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -262,7 +289,77 @@ export default function Page() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 380px", gap: 14, padding: "14px 18px 18px" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: chapters.length > 0 || segments.length > 0 ? "200px 1fr 360px" : "1fr 360px", gap: 12, padding: "14px 18px 18px" }}>
+
+        {/* Left — Talk Time + Chapters (only if data available) */}
+        {(chapters.length > 0 || segments.length > 0) && (() => {
+          const talkTime = calcTalkTime(segments);
+          const activeChapter = chapters.reduce((acc, c) => {
+            return chapterToSec(c.time) <= time ? c : acc;
+          }, chapters[0]);
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflowY: "auto" }}>
+              {/* Talk Time */}
+              {talkTime.length > 0 && (
+                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 12, padding: "12px 14px" }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", marginBottom: 10 }}>Talk Time</p>
+                  {/* Bar */}
+                  <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", gap: 2, marginBottom: 12 }}>
+                    {talkTime.map((t, i) => (
+                      <div key={i} style={{ flex: t.pct, background: speakerColor(t.speaker, colorMap.current), borderRadius: 99 }} />
+                    ))}
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {talkTime.map((t, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: speakerColor(t.speaker, colorMap.current), flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.speaker}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-primary)" }}>{t.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Chapters */}
+              {chapters.length > 0 && (
+                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 12, padding: "12px 14px", flex: 1 }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", marginBottom: 10 }}>Chapters</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    {chapters.map((c, i) => {
+                      const isActive = c === activeChapter;
+                      return (
+                        <button key={i} onClick={() => seekTo(chapterToSec(c.time))}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 8px 10px", borderRadius: 8, background: isActive ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent", border: "none", cursor: "pointer", textAlign: "left", position: "relative" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", paddingTop: 1, flexShrink: 0, minWidth: 16 }}>
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</p>
+                            <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-secondary)", marginTop: 2 }}>{c.time}</p>
+                          </div>
+                          {/* Progress bar at bottom */}
+                          {isActive && (
+                            <div style={{ position: "absolute", left: 8, right: 8, bottom: 3, height: 2, background: "color-mix(in srgb, var(--accent) 20%, transparent)", borderRadius: 1 }}>
+                              <div style={{ height: "100%", background: "var(--accent)", borderRadius: 1, width: (() => {
+                                const next = chapters[i + 1];
+                                if (!next) return "100%";
+                                const start = chapterToSec(c.time);
+                                const end = chapterToSec(next.time);
+                                return Math.min(100, Math.round(((time - start) / (end - start)) * 100)) + "%";
+                              })() }} />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Left — video + controls */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
