@@ -243,10 +243,13 @@ export default function Page() {
     }
     if (found !== activeIdx) {
       setActiveIdx(found);
-      if (autoScroll && found >= 0 && lineRefs.current[found]) {
+      if (autoScroll && found >= 0 && lineRefs.current[found] && txRef.current) {
         isProgrammaticScroll.current = true;
-        lineRefs.current[found]?.scrollIntoView({ behavior: "smooth", block: "center" });
-        setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
+        const container = txRef.current;
+        const el = lineRefs.current[found]!;
+        const targetTop = el.offsetTop - 80; // pin active line ~80px from top
+        container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+        setTimeout(() => { isProgrammaticScroll.current = false; }, 800);
       }
     }
   }, [segments, activeIdx, autoScroll, hasTimestamps]);
@@ -301,24 +304,22 @@ export default function Page() {
             return chapterToSec(c.time) <= time ? c : acc;
           }, chapters[0]);
           return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflowY: "auto" }}>
               {/* Talk Time */}
               {talkTime.length > 0 && (
-                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 12, padding: "12px 14px" }}>
-                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", marginBottom: 10 }}>Talk Time</p>
-                  {/* Bar */}
-                  <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", gap: 2, marginBottom: 12 }}>
+                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 14, padding: "14px 16px" }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-disable)", marginBottom: 12 }}>Talk Time</p>
+                  <div style={{ display: "flex", height: 7, borderRadius: 99, overflow: "hidden", gap: 2, marginBottom: 14 }}>
                     {talkTime.map((t, i) => (
-                      <div key={i} style={{ flex: t.pct, background: speakerColor(t.speaker, colorMap.current), borderRadius: 99 }} />
+                      <div key={i} style={{ flex: t.pct, background: speakerColor(t.speaker, colorMap.current) }} />
                     ))}
                   </div>
-                  {/* Legend */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {talkTime.map((t, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: speakerColor(t.speaker, colorMap.current), flexShrink: 0 }} />
-                        <span style={{ flex: 1, fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.speaker}</span>
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-primary)" }}>{t.pct}%</span>
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: speakerColor(t.speaker, colorMap.current), flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-secondary)" }}>{t.speaker}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>{t.pct}%</span>
                       </div>
                     ))}
                   </div>
@@ -327,30 +328,29 @@ export default function Page() {
 
               {/* Chapters */}
               {chapters.length > 0 && (
-                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 12, padding: "12px 14px", flex: 1 }}>
-                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", marginBottom: 10 }}>Chapters</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 14, padding: "14px 16px", flex: 1 }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-disable)", marginBottom: 10 }}>Chapters</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                     {chapters.map((c, i) => {
                       const isActive = c === activeChapter;
                       return (
                         <button key={i} onClick={() => seekTo(chapterToSec(c.time))}
-                          style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 8px 10px", borderRadius: 8, background: isActive ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent", border: "none", cursor: "pointer", textAlign: "left", position: "relative" }}>
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", paddingTop: 1, flexShrink: 0, minWidth: 16 }}>
+                          style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 10px 12px", borderRadius: 10, background: isActive ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "transparent", border: "none", cursor: "pointer", textAlign: "left", position: "relative", width: "100%" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: isActive ? "var(--accent)" : "var(--text-disable)", paddingTop: 2, flexShrink: 0, minWidth: 18 }}>
                             {String(i + 1).padStart(2, "0")}
                           </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</p>
-                            <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-secondary)", marginTop: 2 }}>{c.time}</p>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.4, fontWeight: isActive ? 500 : 400 }}>{c.title}</p>
+                            <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", marginTop: 3 }}>{c.time}</p>
                           </div>
-                          {/* Progress bar at bottom */}
                           {isActive && (
-                            <div style={{ position: "absolute", left: 8, right: 8, bottom: 3, height: 2, background: "color-mix(in srgb, var(--accent) 20%, transparent)", borderRadius: 1 }}>
-                              <div style={{ height: "100%", background: "var(--accent)", borderRadius: 1, width: (() => {
+                            <div style={{ position: "absolute", left: 10, right: 10, bottom: 4, height: 2, background: "color-mix(in srgb, var(--accent) 18%, transparent)", borderRadius: 1 }}>
+                              <div style={{ height: "100%", background: "var(--accent)", borderRadius: 1, transition: "width 1s linear", width: (() => {
                                 const next = chapters[i + 1];
                                 if (!next) return "100%";
                                 const start = chapterToSec(c.time);
                                 const end = chapterToSec(next.time);
-                                return Math.min(100, Math.round(((time - start) / (end - start)) * 100)) + "%";
+                                return Math.min(100, Math.max(0, Math.round(((time - start) / (end - start)) * 100))) + "%";
                               })() }} />
                             </div>
                           )}
@@ -420,10 +420,11 @@ export default function Page() {
                 <button onClick={() => {
                   const next = !autoScroll;
                   setAutoScroll(next);
-                  if (next && activeIdx >= 0 && lineRefs.current[activeIdx]) {
+                  if (next && activeIdx >= 0 && lineRefs.current[activeIdx] && txRef.current) {
                     isProgrammaticScroll.current = true;
-                    lineRefs.current[activeIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    setTimeout(() => { isProgrammaticScroll.current = false; }, 600);
+                    const el = lineRefs.current[activeIdx]!;
+                    txRef.current.scrollTo({ top: Math.max(0, el.offsetTop - 80), behavior: "smooth" });
+                    setTimeout(() => { isProgrammaticScroll.current = false; }, 800);
                   }
                 }} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: autoScroll ? "var(--accent)" : "var(--text-disable)", border: `1px solid ${autoScroll ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--border-weaker)"}`, padding: "4px 8px", borderRadius: 99, transition: "all 140ms", background: "none" }}>
                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor" }} />
@@ -443,7 +444,7 @@ export default function Page() {
 
           {/* Lines */}
           <div ref={txRef} onScroll={() => { if (!isProgrammaticScroll.current) setAutoScroll(false); }}
-            style={{ flex: 1, overflowY: "auto", padding: "6px 8px 16px", scrollbarWidth: "thin" }}>
+            style={{ flex: 1, overflowY: "auto", padding: "8px 12px 40px", scrollbarWidth: "thin" }}>
             {segments.length === 0 ? (
               <p style={{ color: "var(--text-disable)", fontSize: 13, padding: "20px 8px", fontStyle: "italic" }}>No transcript available.</p>
             ) : (
@@ -457,22 +458,43 @@ export default function Page() {
                 const color = speakerColor(seg.speaker, colorMap.current);
                 return (
                   <div key={i} ref={el => { lineRefs.current[i] = el; }}
-                    className={`tx-line${isActive ? "" : ""}${isPast && !query ? " faded" : ""}`}
-                    data-active={isActive}
+                    style={{ marginTop: showMeta ? 14 : 3, opacity: isPast && !query ? 0.45 : 1, transition: "opacity 200ms", cursor: seg.startsAt >= 0 ? "pointer" : "default" }}
                     onClick={() => { if (seg.startsAt >= 0 && videoRef.current) { videoRef.current.currentTime = seg.startsAt / 1000; videoRef.current.play(); setAutoScroll(true); } }}>
-                    {/* Timestamp column */}
-                    <span className="tx-ts">{fmtMs(seg.startsAt)}</span>
-                    {/* Body */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {showMeta && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-                          <span style={{ width: 22, height: 22, borderRadius: "50%", background: color, display: "grid", placeItems: "center", color: "#fff", fontSize: 9, fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-                            {initials(seg.speaker)}
+                    {/* Speaker header */}
+                    {showMeta && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        {/* Timestamp */}
+                        {seg.startsAt >= 0 && (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: isActive ? "var(--accent)" : "var(--text-disable)", width: 28, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+                            {fmtMs(seg.startsAt)}
                           </span>
-                          <span className="tx-name">{seg.speaker}</span>
-                        </div>
+                        )}
+                        {/* Avatar */}
+                        <span style={{ width: 28, height: 28, borderRadius: "50%", background: color, display: "grid", placeItems: "center", color: "#fff", fontSize: 10, fontFamily: "var(--font-mono)", flexShrink: 0, fontWeight: 500 }}>
+                          {initials(seg.speaker)}
+                        </span>
+                        {/* Name */}
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>{seg.speaker}</span>
+                      </div>
+                    )}
+                    {/* Bubble */}
+                    <div style={{
+                      marginLeft: seg.startsAt >= 0 ? 64 : 36,
+                      padding: "9px 13px",
+                      borderRadius: "0 12px 12px 12px",
+                      background: isActive ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "var(--surface-B)",
+                      border: `1px solid ${isActive ? "color-mix(in srgb, var(--accent) 25%, transparent)" : "var(--border-weaker)"}`,
+                      borderLeft: isActive ? `3px solid var(--accent)` : `1px solid var(--border-weaker)`,
+                      transition: "background 200ms, border-color 200ms",
+                    }}>
+                      {!showMeta && seg.startsAt >= 0 && (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: isActive ? "var(--accent)" : "var(--text-disable)", display: "block", marginBottom: 3 }}>
+                          {fmtMs(seg.startsAt)}
+                        </span>
                       )}
-                      <p className="tx-text">{highlight(seg.text, query)}</p>
+                      <p style={{ fontSize: 13, lineHeight: 1.55, color: isActive ? "var(--text-primary)" : "var(--text-secondary)", margin: 0 }}>
+                        {highlight(seg.text, query)}
+                      </p>
                     </div>
                   </div>
                 );
