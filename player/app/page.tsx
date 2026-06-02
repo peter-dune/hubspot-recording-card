@@ -376,8 +376,8 @@ export default function Page() {
           </div>
         )}
 
-        {/* CENTER — video + controls + caption */}
-        <div style={{display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
+        {/* CENTER — video + controls + signals (scrollable) */}
+        <div style={{display:"flex",flexDirection:"column",gap:10,minWidth:0,overflowY:"auto",scrollbarWidth:"thin",paddingRight:4}}>
           {/* 2. VIDEO with camera rail */}
           <div style={{position:"relative",aspectRatio:"16/9",background:"#0b0b10",borderRadius:14,overflow:"hidden",flex:"0 0 auto"}}>
             <video ref={videoRef} src={videoUrl}
