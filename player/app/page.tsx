@@ -371,7 +371,7 @@ export default function Page() {
                     const next=chapters[i+1];
                     const prog=next?(Math.max(0,Math.min(1,(time-chapterToSec(c.time))/(chapterToSec(next.time)-chapterToSec(c.time))))):1;
                     return(
-                      <button key={i} onClick={()=>seekTo(chapterToSec(c.time))} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px 12px",borderRadius:10,background:isActive?"color-mix(in srgb,var(--accent) 12%,transparent)":"transparent",border:"none",cursor:"pointer",textAlign:"left",width:"100%",position:"relative"}}>
+                      <button key={i} onClick={()=>{seekTo(chapterToSec(c.time));setAutoScroll(true);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px 12px",borderRadius:10,background:isActive?"color-mix(in srgb,var(--accent) 12%,transparent)":"transparent",border:"none",cursor:"pointer",textAlign:"left",width:"100%",position:"relative"}}>
                         <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:isActive?"var(--accent)":"var(--text-disable)",flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>
                         <div style={{flex:1,minWidth:0}}>
                           <p style={{fontSize:12.5,color:"var(--text-primary)",lineHeight:1.35,fontWeight:isActive?500:400}}>{c.title}</p>
