@@ -147,7 +147,8 @@ function SignalsFeed({ signals, time, duration, onSeek, colorMap }: {
     acc[s.type] = (acc[s.type]||0)+1; return acc;
   }, {} as Record<string,number>);
 
-  const filtered = activeType ? signals.filter(s=>s.type===activeType) : signals;
+  const sorted = [...signals].sort((a,b)=>sigToSec(a.timestamp)-sigToSec(b.timestamp));
+  const filtered = activeType ? sorted.filter(s=>s.type===activeType) : sorted;
 
   function sigState(s: Signal): "upcoming"|"live"|"captured" {
     const t = sigToSec(s.timestamp);
