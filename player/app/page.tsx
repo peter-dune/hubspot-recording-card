@@ -191,14 +191,6 @@ export default function Page() {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden",background:"var(--surface-A)"}}>
 
-      {/* 1. SINGLE HEADER */}
-      <div style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid var(--border-weaker)"}}>
-        <span style={{fontSize:14,fontWeight:500,color:"var(--text-primary)",letterSpacing:"-0.01em"}}>{title}</span>
-        <div style={{display:"flex",alignItems:"center",gap:16,fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-secondary)"}}>
-          {date&&<span>{date}</span>}
-          {duration>0&&<span>{fmt(duration)}</span>}
-        </div>
-      </div>
 
       {/* BODY */}
       <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"200px 1fr 420px":"1fr 420px",gap:12,padding:"14px 18px 18px"}}>

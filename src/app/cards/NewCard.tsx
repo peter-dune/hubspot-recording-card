@@ -118,7 +118,7 @@ const RecordingCard = () => {
               uri: playerUrl,
               height: 800,
               width: 1400,
-              title: title || "Call Recording",
+              title: [title, date].filter(Boolean).join("  ·  ") || "Call Recording",
             })
           }
         >
