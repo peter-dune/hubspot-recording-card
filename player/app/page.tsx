@@ -140,6 +140,8 @@ function SignalsFeed({ signals, time, duration, onSeek, colorMap }: {
   onSeek: (t: number) => void; colorMap: Map<string,string>;
 }) {
   const [activeType, setActiveType] = useState<string|null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<(HTMLButtonElement|null)[]>([]);
   const LIVE_WINDOW = 16; // seconds a signal shows as "live"
 
   // Build type counts
@@ -195,24 +197,34 @@ function SignalsFeed({ signals, time, duration, onSeek, colorMap }: {
           const t=sigToSec(s.timestamp);
           const state=sigState(s);
           const dim=activeType&&s.type!==activeType;
+          // Find index in sorted list for scroll target
+          const sortedIdx = sorted.findIndex((_,si)=>sorted[si]===s);
           return(
             <button key={i} className={`sig-mark ${state==="captured"?"sig-mark-captured":state==="live"?"sig-mark-live":""} ${dim?"sig-mark-off":""}`}
               style={{left:duration>0?(t/duration)*100+"%":"0%","--tc":sigColor(s.type)} as React.CSSProperties}
-              onClick={()=>onSeek(t)} title={s.label}/>
+              onClick={()=>{
+                onSeek(t);
+                // Scroll the list to the matching card
+                if(listRef.current && cardRefs.current[sortedIdx]){
+                  const el=cardRefs.current[sortedIdx]!;
+                  const container=listRef.current;
+                  container.scrollTo({top:el.offsetTop-container.offsetTop-12,behavior:"smooth"});
+                }
+              }} title={s.label}/>
           );
         })}
         <div className="sig-strip-head" style={{left:duration>0?(time/duration)*100+"%":"0%"}}/>
       </div>
 
       {/* Signal cards */}
-      <div className="sig-list">
+      <div className="sig-list" ref={listRef}>
         {filtered.map((s,i)=>{
           const t=sigToSec(s.timestamp);
           const state=sigState(s);
           const color=sigColor(s.type);
           const spkColor=speakerColor(s.speaker,colorMap);
           return(
-            <button key={i} className={`sig-row is-${state}`}
+            <button key={i} ref={el=>{cardRefs.current[i]=el;}} className={`sig-row is-${state}`}
               style={{"--tc":color,"--sc":spkColor} as React.CSSProperties}
               onClick={()=>onSeek(t)}>
               <div className="sig-rule"/>
@@ -548,7 +560,7 @@ export default function Page() {
         .sig-strip-head::before{content:"";position:absolute;top:-2px;left:50%;transform:translateX(-50%);width:7px;height:7px;border-radius:50%;background:var(--text-primary);}
         @keyframes sig-pulse{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--tc) 30%,transparent);}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--tc) 0%,transparent);}}
         /* list */
-        .sig-list{display:flex;flex-direction:column;gap:7px;padding:2px;}
+        .sig-list{display:flex;flex-direction:column;gap:7px;padding:2px 2px 16px;max-height:420px;overflow-y:auto;scrollbar-width:thin;}
         /* row */
         .sig-row{position:relative;display:grid;grid-template-columns:auto 1fr auto auto;align-items:start;gap:12px;width:100%;text-align:left;cursor:pointer;padding:13px 14px 13px 17px;border-radius:10px;background:var(--surface-B);border:1px solid var(--border-weaker);transition:background 140ms,border-color 140ms,opacity 200ms;}
         .sig-row:hover{border-color:var(--border-strong);}
