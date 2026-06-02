@@ -293,20 +293,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* 4. LIVE CAPTION STRIP */}
-          {activeSeg&&(
-            <div style={{padding:"14px 16px",borderRadius:10,background:"var(--surface-B)",border:"1px solid var(--border-weaker)",display:"flex",flexDirection:"column",gap:7,maxHeight:160,overflow:"hidden"}}>
-              <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600,letterSpacing:"0.02em",color:"var(--text-primary)",flexShrink:0}}>
-                <span style={{width:8,height:8,borderRadius:"50%",background:speakerColor(activeSeg.speaker,colorMap.current),flexShrink:0}}/>
-                {activeSeg.speaker}
-              </span>
-              <div style={{overflowY:"auto",scrollbarWidth:"thin"}}>
-                <p style={{margin:0,fontSize:17,lineHeight:1.5,color:"var(--text-primary)"} as React.CSSProperties}>
-                  {activeSeg.text}
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* RIGHT — transcript */}
