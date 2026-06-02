@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 
   if (recordId) {
     try {
-      const props = ["call_title", "host", "call_date", "call_name", "transcript", "transcript_timed", "call_chapters"];
+      const props = ["call_title", "host", "call_date", "call_name", "transcript", "transcript_timed", "call_chapters", "call_signals"];
       const metaRes = await get(
         `https://api.hubapi.com/crm/v3/objects/p_recordings/${recordId}?properties=${props.join(",")}`,
         token
@@ -140,5 +140,11 @@ export async function GET(req: NextRequest) {
     try { chapters = JSON.parse(metadata.call_chapters); } catch {}
   }
 
-  return NextResponse.json({ videoUrl, segments, metadata, chapters });
+  // Parse signals
+  let signals: unknown[] = [];
+  if (metadata.call_signals) {
+    try { signals = JSON.parse(metadata.call_signals); } catch {}
+  }
+
+  return NextResponse.json({ videoUrl, segments, metadata, chapters, signals });
 }
