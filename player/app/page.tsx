@@ -157,7 +157,11 @@ export default function Page() {
       if(autoScroll&&found>=0&&lineRefs.current[found]&&txRef.current){
         isProgrammaticScroll.current=true;
         const el=lineRefs.current[found]!;
-        txRef.current.scrollTo({top:Math.max(0,el.offsetTop-100),behavior:"smooth"});
+        const container=txRef.current;
+        const elRect=el.getBoundingClientRect();
+        const contRect=container.getBoundingClientRect();
+        const target=container.scrollTop+(elRect.top-contRect.top)-80;
+        container.scrollTo({top:Math.max(0,target),behavior:"smooth"});
         setTimeout(()=>{isProgrammaticScroll.current=false;},800);
       }
     }
@@ -291,14 +295,16 @@ export default function Page() {
 
           {/* 4. LIVE CAPTION STRIP */}
           {activeSeg&&(
-            <div style={{padding:"14px 16px",borderRadius:10,background:"var(--surface-B)",border:"1px solid var(--border-weaker)",display:"flex",flexDirection:"column",gap:7}}>
-              <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600,letterSpacing:"0.02em",color:"var(--text-primary)"}}>
+            <div style={{padding:"14px 16px",borderRadius:10,background:"var(--surface-B)",border:"1px solid var(--border-weaker)",display:"flex",flexDirection:"column",gap:7,maxHeight:160,overflow:"hidden"}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600,letterSpacing:"0.02em",color:"var(--text-primary)",flexShrink:0}}>
                 <span style={{width:8,height:8,borderRadius:"50%",background:speakerColor(activeSeg.speaker,colorMap.current),flexShrink:0}}/>
                 {activeSeg.speaker}
               </span>
-              <p style={{margin:0,fontSize:17,lineHeight:1.5,color:"var(--text-primary)",textWrap:"pretty"} as React.CSSProperties}>
-                {activeSeg.text}
-              </p>
+              <div style={{overflowY:"auto",scrollbarWidth:"thin"}}>
+                <p style={{margin:0,fontSize:17,lineHeight:1.5,color:"var(--text-primary)"} as React.CSSProperties}>
+                  {activeSeg.text}
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -314,7 +320,9 @@ export default function Page() {
                   const next=!autoScroll; setAutoScroll(next);
                   if(next&&activeIdx>=0&&lineRefs.current[activeIdx]&&txRef.current){
                     isProgrammaticScroll.current=true;
-                    txRef.current.scrollTo({top:Math.max(0,lineRefs.current[activeIdx]!.offsetTop-100),behavior:"smooth"});
+                    const el2=lineRefs.current[activeIdx]!;const cont2=txRef.current;
+                    const target2=cont2.scrollTop+(el2.getBoundingClientRect().top-cont2.getBoundingClientRect().top)-80;
+                    cont2.scrollTo({top:Math.max(0,target2),behavior:"smooth"});
                     setTimeout(()=>{isProgrammaticScroll.current=false;},800);
                   }
                 }} style={{display:"inline-flex",alignItems:"center",gap:5,fontFamily:"var(--font-mono)",fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",color:autoScroll?"var(--accent)":"var(--text-disable)",border:`1px solid ${autoScroll?"color-mix(in srgb,var(--accent) 40%,transparent)":"var(--border-weaker)"}`,padding:"4px 8px",borderRadius:99,background:"none",cursor:"pointer"}}>
