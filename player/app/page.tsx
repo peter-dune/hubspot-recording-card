@@ -267,29 +267,6 @@ export default function Page() {
               </button>
             )}
 
-            {/* 2. Camera rail — speaker tiles */}
-            {talkTime.length>1&&(
-              <div className="cam-rail">
-                {talkTime.map((t,i)=>{
-                  const color=speakerColor(t.speaker,colorMap.current);
-                  const isActive=t.speaker===activeSpeaker;
-                  return(
-                    <button key={i} className={`cam-tile${isActive?" on":""}`}
-                      style={{"--cam":color} as React.CSSProperties}
-                      onClick={()=>{
-                        const next=segments.find(s=>s.speaker===t.speaker&&s.startsAt>time*1000);
-                        const first=segments.find(s=>s.speaker===t.speaker);
-                        const target=next||first;
-                        if(target&&videoRef.current){videoRef.current.currentTime=(target.startsAt/1000)+0.05;videoRef.current.play();}
-                      }}>
-                      <span className="cam-tile-face">{initials(t.speaker)}</span>
-                      <span className="cam-tile-name">{t.speaker.split(" ")[0]}</span>
-                      {isActive&&playing&&<span className="cam-tile-eq"><i/><i/><i/></span>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* Controls */}
