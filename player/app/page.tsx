@@ -432,7 +432,7 @@ export default function Page() {
 
           {/* SIGNALS FEED */}
           {signals.length>0&&(
-            <SignalsFeed signals={signals} time={time} duration={duration} onSeek={seekTo} colorMap={colorMap.current}/>
+            <SignalsFeed signals={signals} time={time} duration={duration} onSeek={(t)=>{seekTo(t);videoRef.current?.play();}} colorMap={colorMap.current}/>
           )}
 
         </div>
