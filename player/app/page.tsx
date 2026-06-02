@@ -5,6 +5,32 @@ import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
 interface Metadata { call_title?: string; call_name?: string; host?: string; call_date?: string; }
 interface Chapter { time: string; title: string; }
+interface Signal {
+  type: string;
+  label: string;
+  quote: string;
+  speaker: string;
+  timestamp: string; // MM:SS
+  importance: "high" | "medium" | "low";
+}
+
+/* ── signal helpers ─────────────────────────────────────────── */
+const SIG_TYPES: Record<string, { label: string; color: string }> = {
+  buying_signal: { label: "Buying Intent",    color: "var(--color-green-500, #109c6b)" },
+  pain_point:    { label: "Pain Point",        color: "var(--color-red-500,   #e53430)" },
+  objection:     { label: "Objection",         color: "var(--color-red-500,   #e53430)" },
+  key_question:  { label: "Key Question",      color: "var(--color-blue-500,  #446bce)" },
+  action_item:   { label: "Action Item",       color: "var(--color-orange-400,#f4603e)" },
+  competitor:    { label: "Competitor",        color: "#d4b739" },
+  timeline:      { label: "Timeline",          color: "var(--color-orange-400,#f4603e)" },
+  decision_maker:{ label: "Decision Maker",    color: "var(--color-blue-500,  #446bce)" },
+};
+function sigColor(type: string) { return SIG_TYPES[type]?.color ?? "var(--accent)"; }
+function sigLabel(type: string) { return SIG_TYPES[type]?.label ?? type; }
+function sigToSec(ts: string): number {
+  const p = ts.split(":").map(Number);
+  return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+(p[2]||0);
+}
 
 /* ── helpers ────────────────────────────────────────────────── */
 function fmt(sec: number) {
@@ -108,11 +134,117 @@ function SpeedCtrl({rate,onRate}:{rate:number;onRate:(r:number)=>void}) {
 const ctrlBtn: React.CSSProperties={display:"inline-grid",placeItems:"center",width:36,height:36,borderRadius:9,color:"var(--text-secondary)",transition:"background 140ms,color 140ms"};
 
 /* ── Main ───────────────────────────────────────────────────── */
+/* ── SignalsFeed ─────────────────────────────────────────────── */
+function SignalsFeed({ signals, time, duration, onSeek, colorMap }: {
+  signals: Signal[]; time: number; duration: number;
+  onSeek: (t: number) => void; colorMap: Map<string,string>;
+}) {
+  const [activeType, setActiveType] = useState<string|null>(null);
+  const LIVE_WINDOW = 16; // seconds a signal shows as "live"
+
+  // Build type counts
+  const typeCounts = signals.reduce((acc, s) => {
+    acc[s.type] = (acc[s.type]||0)+1; return acc;
+  }, {} as Record<string,number>);
+
+  const filtered = activeType ? signals.filter(s=>s.type===activeType) : signals;
+
+  function sigState(s: Signal): "upcoming"|"live"|"captured" {
+    const t = sigToSec(s.timestamp);
+    if (t > time) return "upcoming";
+    if (time - t < LIVE_WINDOW) return "live";
+    return "captured";
+  }
+
+  // Icons per type
+  const SIG_ICONS: Record<string,string> = {
+    buying_signal:"↑", pain_point:"!", objection:"✕", key_question:"?",
+    action_item:"→", competitor:"⚡", timeline:"⏱", decision_maker:"👤",
+  };
+
+  return (
+    <div className="sig" style={{marginTop:4}}>
+      {/* Header */}
+      <div className="sig-head">
+        <div className="sig-head-l">
+          <h2 className="sig-h">Call Signals</h2>
+          <span className="sig-count">{signals.length} <i>captured</i></span>
+        </div>
+        {/* Filter chips */}
+        <div className="sig-filters">
+          <button className={`sig-chip${!activeType?" on":""}`} onClick={()=>setActiveType(null)}>
+            All <em>{signals.length}</em>
+          </button>
+          {Object.entries(typeCounts).map(([type, count])=>(
+            <button key={type} className={`sig-chip${activeType===type?" on":""}`}
+              style={{"--tc":sigColor(type)} as React.CSSProperties}
+              onClick={()=>setActiveType(activeType===type?null:type)}>
+              <span className="sig-chip-dot"/>
+              {sigLabel(type)} <em>{count}</em>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeline strip */}
+      <div className="sig-strip">
+        <div className="sig-strip-line"/>
+        <div className="sig-strip-fill" style={{width:duration>0?(time/duration)*100+"%":"0%"}}/>
+        {signals.map((s,i)=>{
+          const t=sigToSec(s.timestamp);
+          const state=sigState(s);
+          const dim=activeType&&s.type!==activeType;
+          return(
+            <button key={i} className={`sig-mark ${state==="captured"?"sig-mark-captured":state==="live"?"sig-mark-live":""} ${dim?"sig-mark-off":""}`}
+              style={{left:duration>0?(t/duration)*100+"%":"0%","--tc":sigColor(s.type)} as React.CSSProperties}
+              onClick={()=>onSeek(t)} title={s.label}/>
+          );
+        })}
+        <div className="sig-strip-head" style={{left:duration>0?(time/duration)*100+"%":"0%"}}/>
+      </div>
+
+      {/* Signal cards */}
+      <div className="sig-list">
+        {filtered.map((s,i)=>{
+          const t=sigToSec(s.timestamp);
+          const state=sigState(s);
+          const color=sigColor(s.type);
+          const spkColor=speakerColor(s.speaker,colorMap);
+          return(
+            <button key={i} className={`sig-row is-${state}`}
+              style={{"--tc":color,"--sc":spkColor} as React.CSSProperties}
+              onClick={()=>onSeek(t)}>
+              <div className="sig-rule"/>
+              <div className="sig-ico">
+                <span style={{fontSize:15}}>{SIG_ICONS[s.type]??"•"}</span>
+              </div>
+              <div className="sig-body">
+                <div className="sig-meta">
+                  <span className="sig-type">{sigLabel(s.type)}</span>
+                  <span className="sig-dot-sep"/>
+                  <span className="sig-spk">{s.speaker.split(" ")[0]}</span>
+                  {state==="live"&&<span className="sig-live">● Live</span>}
+                  {state==="upcoming"&&<span className="sig-up">Upcoming</span>}
+                </div>
+                <div className="sig-title">{s.label}</div>
+                {s.quote&&<div className="sig-quote">"{s.quote}"</div>}
+              </div>
+              <span className="sig-time">{s.timestamp}</span>
+              <span className="sig-jump">→</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [videoUrl,setVideoUrl]=useState<string|null>(null);
   const [segments,setSegments]=useState<Segment[]>([]);
   const [metadata,setMetadata]=useState<Metadata>({});
   const [chapters,setChapters]=useState<Chapter[]>([]);
+  const [signals,setSignals]=useState<Signal[]>([]);
   const [error,setError]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
 
@@ -142,7 +274,7 @@ export default function Page() {
     fetch(`/api/recording-data?${qs}`).then(r=>r.json()).then(data=>{
       if(data.error)throw new Error(data.error);
       if(!data.videoUrl)throw new Error("No video URL.");
-      setVideoUrl(data.videoUrl);setMetadata(data.metadata||{});setSegments(data.segments||[]);setChapters(data.chapters||[]);
+      setVideoUrl(data.videoUrl);setMetadata(data.metadata||{});setSegments(data.segments||[]);setChapters(data.chapters||[]);setSignals(data.signals||[]);
     }).catch(e=>setError(e.message)).finally(()=>setLoading(false));
   },[]);
 
@@ -285,6 +417,11 @@ export default function Page() {
             </div>
           </div>
 
+          {/* SIGNALS FEED */}
+          {signals.length>0&&(
+            <SignalsFeed signals={signals} time={time} duration={duration} onSeek={seekTo} colorMap={colorMap.current}/>
+          )}
+
         </div>
 
         {/* RIGHT — transcript */}
@@ -381,6 +518,61 @@ export default function Page() {
         /* play overlay */
         .stage-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;width:80px;height:80px;border-radius:50%;border:1px solid rgba(255,255,255,0.25);background:rgba(15,15,21,0.5);backdrop-filter:blur(10px);color:#fff;cursor:pointer;display:grid;place-items:center;padding-left:4px;transition:transform 150ms,background 150ms,border-color 150ms;}
         .stage-play:hover{transform:translate(-50%,-50%) scale(1.06);background:var(--accent);border-color:var(--accent);}
+
+        /* ── SIGNALS ── */
+        .sig{--tc:var(--accent);font-family:var(--font-sans);color:var(--text-primary);-webkit-font-smoothing:antialiased;}
+        .sig *,.sig *::before,.sig *::after{box-sizing:border-box;}
+        .sig-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+        .sig-head-l{display:flex;align-items:center;gap:10px;}
+        .sig-h{font-size:18px;font-weight:500;letter-spacing:-0.01em;margin:0;}
+        .sig-count{font-family:var(--font-mono);font-size:12px;color:var(--text-primary);background:var(--surface-C);border-radius:999px;padding:3px 10px;}
+        .sig-count i{color:var(--text-disable);font-style:normal;}
+        .sig-filters{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+        .sig-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.01em;text-transform:uppercase;color:var(--text-secondary);background:transparent;border:1px solid var(--border-weaker);border-radius:999px;padding:5px 10px;cursor:pointer;transition:all 140ms;}
+        .sig-chip:hover{border-color:var(--border-strong);color:var(--text-primary);}
+        .sig-chip em{font-style:normal;color:var(--text-disable);}
+        .sig-chip-dot{width:7px;height:7px;border-radius:2px;rotate:45deg;background:var(--tc);}
+        .sig-chip.on{color:var(--text-primary);border-color:color-mix(in srgb,var(--tc) 55%,var(--border-weak));background:color-mix(in srgb,var(--tc) 9%,transparent);}
+        .sig-chip.on em{color:var(--text-secondary);}
+        /* strip */
+        .sig-strip{position:relative;height:28px;margin:4px 2px 18px;}
+        .sig-strip-line{position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:var(--border-weaker);border-radius:2px;}
+        .sig-strip-fill{position:absolute;left:0;top:50%;height:2px;transform:translateY(-50%);background:color-mix(in srgb,var(--text-primary) 24%,transparent);border-radius:2px;}
+        .sig-mark{position:absolute;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:11px;height:11px;border-radius:2px;border:none;cursor:pointer;padding:0;background:var(--surface-A);box-shadow:inset 0 0 0 2px var(--tc);transition:transform 150ms;}
+        .sig-mark:hover{transform:translate(-50%,-50%) rotate(45deg) scale(1.3);}
+        .sig-mark-captured{background:var(--tc);}
+        .sig-mark-live{background:var(--tc);animation:sig-pulse 1.8s ease infinite;}
+        .sig-mark-off{opacity:0.22;}
+        .sig-strip-head{position:absolute;top:2px;bottom:2px;width:2px;transform:translateX(-50%);background:var(--text-primary);border-radius:2px;}
+        .sig-strip-head::before{content:"";position:absolute;top:-2px;left:50%;transform:translateX(-50%);width:7px;height:7px;border-radius:50%;background:var(--text-primary);}
+        @keyframes sig-pulse{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--tc) 30%,transparent);}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--tc) 0%,transparent);}}
+        /* list */
+        .sig-list{display:flex;flex-direction:column;gap:7px;padding:2px;}
+        /* row */
+        .sig-row{position:relative;display:grid;grid-template-columns:auto 1fr auto auto;align-items:start;gap:12px;width:100%;text-align:left;cursor:pointer;padding:13px 14px 13px 17px;border-radius:10px;background:var(--surface-B);border:1px solid var(--border-weaker);transition:background 140ms,border-color 140ms,opacity 200ms;}
+        .sig-row:hover{border-color:var(--border-strong);}
+        .sig-rule{position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--tc);}
+        .sig-ico{flex:none;width:28px;height:28px;border-radius:6px;display:grid;place-items:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 13%,transparent);margin-top:1px;font-size:14px;}
+        .sig-body{min-width:0;display:flex;flex-direction:column;gap:4px;}
+        .sig-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .sig-type{font-family:var(--font-mono);font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:var(--tc);}
+        .sig-dot-sep{width:3px;height:3px;border-radius:50%;background:var(--border-strong);}
+        .sig-spk{font-size:12px;color:var(--text-secondary);position:relative;padding-left:13px;}
+        .sig-spk::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:var(--sc);}
+        .sig-live{font-family:var(--font-mono);font-size:9px;letter-spacing:0.04em;text-transform:uppercase;color:var(--tc);}
+        .sig-up{font-family:var(--font-mono);font-size:9px;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-disable);border:1px solid var(--border-weaker);border-radius:999px;padding:1px 7px;}
+        .sig-title{font-size:14px;font-weight:500;line-height:1.35;color:var(--text-primary);letter-spacing:-0.005em;}
+        .sig-quote{font-size:12.5px;line-height:1.5;color:var(--text-secondary);font-style:italic;}
+        .sig-time{font-family:var(--font-mono);font-size:11px;color:var(--text-disable);font-variant-numeric:tabular-nums;padding-top:2px;}
+        .sig-jump{flex:none;color:var(--text-disable);opacity:0;transition:opacity 140ms;padding-top:3px;font-size:14px;}
+        .sig-row:hover .sig-jump{opacity:1;}
+        /* states */
+        .is-upcoming{opacity:0.48;}
+        .is-upcoming .sig-rule{background:var(--border-strong);}
+        .is-upcoming .sig-ico{color:var(--text-disable);background:var(--surface-C);}
+        .is-upcoming .sig-type{color:var(--text-secondary);}
+        .is-captured{background:var(--surface-A);}
+        .is-live{background:color-mix(in srgb,var(--tc) 7%,var(--surface-A));border-color:color-mix(in srgb,var(--tc) 40%,var(--border-weak));box-shadow:0 2px 12px rgba(0,0,0,0.06);}
       `}</style>
     </div>
   );
