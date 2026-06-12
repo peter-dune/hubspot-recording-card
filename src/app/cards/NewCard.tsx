@@ -132,21 +132,19 @@ const RecordingCard = () => {
 
       <Divider />
 
-      <Flex direction="row">
-        <Button
-          variant="secondary"
-          onClick={() =>
-            actions.openIframeModal({
-              uri: playerUrl,
-              height: 800,
-              width: 1400,
-              title: [title, date].filter(Boolean).join("  ·  ") || "Call Recording",
-            })
-          }
-        >
-          ▶  Play Recording
-        </Button>
-      </Flex>
+      <Button
+        variant="secondary"
+        onClick={() =>
+          actions.openIframeModal({
+            uri: playerUrl,
+            height: 800,
+            width: 1400,
+            title: [title, date].filter(Boolean).join("  ·  ") || "Call Recording",
+          })
+        }
+      >
+        ▶  Play Recording
+      </Button>
     </Flex>
   );
 };
