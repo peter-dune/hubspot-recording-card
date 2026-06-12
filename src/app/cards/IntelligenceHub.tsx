@@ -12,10 +12,8 @@ import {
   StatusTag,
   Statistics,
   StatisticsItem,
-  Tabs,
-  Tab,
-  List,
   Accordion,
+  Tile,
 } from "@hubspot/ui-extensions";
 
 hubspot.extend(() => <IntelligenceHubCard />);
@@ -28,7 +26,6 @@ interface Signal {
   timestamp: string;
   importance: "high" | "medium" | "low";
 }
-interface Chapter { time: string; title: string; }
 
 const SIGNAL_LABEL: Record<string, string> = {
   buying_signal: "Buying intent",
@@ -58,45 +55,87 @@ function parseSentiment(short: string): { label: string; reason: string } | null
   return { label: m[1].toLowerCase(), reason: m[2].replace(/\*/g, "").trim() };
 }
 
-function computeScore(signals: Signal[], sentiment: string | null): number {
+function computeScore(signals: Signal[], sentiment: string | null): { score: number; drivers: string[] } {
   let score = 50;
+  const drivers: { delta: number; text: string }[] = [];
   const w: Record<string, number> = { high: 1.5, medium: 1, low: 0.5 };
+  const counts: Record<string, number> = {};
   for (const s of signals) {
     const k = w[s.importance] ?? 1;
-    if (s.type === "buying_signal") score += 8 * k;
-    else if (s.type === "timeline") score += 4 * k;
-    else if (s.type === "decision_maker") score += 3 * k;
-    else if (s.type === "action_item") score += 2 * k;
-    else if (s.type === "pain_point") score += 2 * k;
-    else if (s.type === "objection") score -= 6 * k;
-    else if (s.type === "competitor") score -= 3 * k;
+    let d = 0;
+    if (s.type === "buying_signal") d = 8 * k;
+    else if (s.type === "timeline") d = 4 * k;
+    else if (s.type === "decision_maker") d = 3 * k;
+    else if (s.type === "action_item") d = 2 * k;
+    else if (s.type === "pain_point") d = 2 * k;
+    else if (s.type === "objection") d = -6 * k;
+    else if (s.type === "competitor") d = -3 * k;
+    score += d;
+    counts[s.type] = (counts[s.type] ?? 0) + 1;
   }
-  if (sentiment === "positive") score += 8;
-  if (sentiment === "at-risk") score -= 10;
-  return Math.max(5, Math.min(95, Math.round(score)));
+  if (counts.buying_signal) drivers.push({ delta: 1, text: `${counts.buying_signal} buying signal${counts.buying_signal > 1 ? "s" : ""}` });
+  if (counts.objection) drivers.push({ delta: -1, text: `${counts.objection} objection${counts.objection > 1 ? "s" : ""}` });
+  if (counts.competitor) drivers.push({ delta: -1, text: `competitor mentioned` });
+  if (counts.timeline) drivers.push({ delta: 1, text: `timeline discussed` });
+  if (sentiment === "positive") { score += 8; drivers.push({ delta: 1, text: "positive sentiment" }); }
+  if (sentiment === "at-risk") { score -= 10; drivers.push({ delta: -1, text: "at-risk sentiment" }); }
+  return {
+    score: Math.max(5, Math.min(95, Math.round(score))),
+    drivers: drivers.slice(0, 3).map(d => `${d.delta > 0 ? "▲" : "▼"} ${d.text}`),
+  };
 }
 
-function scoreText(score: number): string {
-  if (score >= 70) return "Strong";
-  if (score >= 55) return "Promising";
-  if (score >= 40) return "Neutral";
-  return "At risk";
+function scoreTone(score: number): { text: string; variant: "success" | "warning" | "error" } {
+  if (score >= 70) return { text: "Strong", variant: "success" };
+  if (score >= 55) return { text: "Promising", variant: "success" };
+  if (score >= 40) return { text: "Neutral", variant: "warning" };
+  return { text: "At risk", variant: "error" };
 }
 
-/** Render Slack-mrkdwn-ish text as Text lines (bold markers stripped) */
+/** Pull TL;DR bullets out of the extended summary */
+function extractTldr(extended: string): string[] {
+  const m = extended.match(/\*TL;DR\*\s*\n([\s\S]*?)(?:\n\s*\n|$)/);
+  if (!m) return [];
+  return m[1].split("\n").map(l => l.replace(/^•\s*/, "").replace(/\*/g, "").trim()).filter(Boolean);
+}
+
+/** Pull Open questions bullets out of the extended summary */
+function extractOpenQuestions(extended: string): string[] {
+  const m = extended.match(/\*Open questions\*\s*\n([\s\S]*?)(?:\n\s*\n|$)/);
+  if (!m) return [];
+  return m[1].split("\n").map(l => l.replace(/^•\s*/, "").replace(/\*/g, "").trim()).filter(Boolean);
+}
+
+/** Pull Action items grouped by person from the extended summary */
+function extractActionItems(extended: string): { person: string; items: string[] }[] {
+  const m = extended.match(/\*Action items\*\s*\n([\s\S]*?)(?=\n(?:📡|🧭|\*Key signals\*|\*Open questions\*)|$)/);
+  if (!m) return [];
+  const out: { person: string; items: string[] }[] = [];
+  let current: { person: string; items: string[] } | null = null;
+  for (const raw of m[1].split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("•")) {
+      current?.items.push(line.replace(/^•\s*/, "").replace(/\*/g, "").trim());
+    } else {
+      if (current && current.items.length) out.push(current);
+      current = { person: line.replace(/\*/g, "").replace(/:$/, "").trim(), items: [] };
+    }
+  }
+  if (current && current.items.length) out.push(current);
+  return out;
+}
+
 function SummaryLines({ text }: { text: string }) {
-  const lines = text.split("\n");
   return (
     <Flex direction="column" gap="extra-small">
-      {lines.map((line, i) => {
+      {text.split("\n").map((line, i) => {
         const t = line.trim();
         if (!t) return null;
         const clean = t.replace(/\*/g, "");
         const isHeader = /^\*[^*]+\*:?\s*$/.test(t) || /^(🏷️|⚡|📝|✅|📡|🧭)/.test(t);
         return (
-          <Text key={i} format={isHeader ? { fontWeight: "bold" } : undefined}>
-            {clean}
-          </Text>
+          <Text key={i} format={isHeader ? { fontWeight: "bold" } : undefined}>{clean}</Text>
         );
       })}
     </Flex>
@@ -111,11 +150,9 @@ const IntelligenceHubCard = () => {
   useEffect(() => {
     actions
       .fetchCrmObjectProperties([
-        "call_summary_short",
-        "call_summary_extended",
-        "call_signals",
-        "call_chapters",
-        "transcript_timed",
+        "call_summary_short", "call_summary_extended",
+        "call_signals", "transcript_timed",
+        "participants", "participants_emails",
       ])
       .then(setProps)
       .finally(() => setLoading(false));
@@ -125,32 +162,57 @@ const IntelligenceHubCard = () => {
     try { return JSON.parse(props.call_signals || "[]"); } catch { return []; }
   }, [props.call_signals]);
 
-  const chapters = useMemo<Chapter[]>(() => {
-    try { return JSON.parse(props.call_chapters || "[]"); } catch { return []; }
-  }, [props.call_chapters]);
-
   const short = props.call_summary_short || "";
   const extended = props.call_summary_extended || "";
 
+  // Internal Dune members: head of participants list with @dune.com emails
+  const internalNames = useMemo(() => {
+    const names = (props.participants || "").split(",").map(s => s.trim()).filter(Boolean);
+    const emails = (props.participants_emails || "").split(",").map(s => s.trim()).filter(Boolean);
+    const out: string[] = [];
+    for (let i = 0; i < names.length && i < emails.length; i++) {
+      if (emails[i].toLowerCase().endsWith("@dune.com")) out.push(names[i]);
+      else break;
+    }
+    return out;
+  }, [props.participants, props.participants_emails]);
+
+  const isInternal = (speaker: string) =>
+    internalNames.some(n => n.toLowerCase().split(" ")[0] === (speaker || "").toLowerCase().split(" ")[0]);
+
   const sentiment = useMemo(() => parseSentiment(short), [short]);
-  const score = useMemo(() => computeScore(signals, sentiment?.label ?? null), [signals, sentiment]);
+  const { score, drivers } = useMemo(() => computeScore(signals, sentiment?.label ?? null), [signals, sentiment]);
+  const tone = scoreTone(score);
 
   const durationMin = useMemo(() => {
-    const t = props.transcript_timed || "";
-    const matches = t.match(/\[(\d{2}):(\d{2})\]/g);
-    if (!matches || matches.length === 0) return null;
+    const matches = (props.transcript_timed || "").match(/\[(\d{2}):(\d{2})\]/g);
+    if (!matches?.length) return null;
     const last = matches[matches.length - 1].match(/\[(\d{2}):(\d{2})\]/);
-    if (!last) return null;
-    return Math.max(1, Math.round((parseInt(last[1]) * 60 + parseInt(last[2])) / 60));
+    return last ? Math.max(1, Math.round((parseInt(last[1]) * 60 + parseInt(last[2])) / 60)) : null;
   }, [props.transcript_timed]);
 
-  const highCount = signals.filter(s => s.importance === "high").length;
+  const tldr = useMemo(() => extractTldr(extended), [extended]);
+  const openQuestions = useMemo(() => extractOpenQuestions(extended), [extended]);
+  const actionItems = useMemo(() => extractActionItems(extended), [extended]);
+
+  const moneyQuotes = useMemo(
+    () => signals.filter(s => /[$€£]\s?\d|\d+\s?[kK]\b|\d+%/.test(s.quote || "")),
+    [signals]
+  );
+  const risks = useMemo(
+    () => signals.filter(s => s.type === "objection" || s.type === "competitor"),
+    [signals]
+  );
+  const decisionProcess = useMemo(
+    () => signals.filter(s => s.type === "decision_maker" || s.type === "timeline"),
+    [signals]
+  );
 
   if (loading) {
     return <Flex direction="column" align="center" justify="center"><LoadingSpinner label="Loading intelligence…" /></Flex>;
   }
 
-  if (!short && signals.length === 0 && chapters.length === 0) {
+  if (!short && signals.length === 0) {
     return (
       <EmptyState title="No intelligence yet" layout="vertical">
         <Text>This recording hasn't been processed yet — intelligence appears a few minutes after the call.</Text>
@@ -162,76 +224,169 @@ const IntelligenceHubCard = () => {
     ? `${sentiment.label === "positive" ? "🌱" : sentiment.label === "at-risk" ? "🌧️" : "🌤️"} ${sentiment.label.charAt(0).toUpperCase() + sentiment.label.slice(1)}`
     : "—";
 
+  const duneItems = actionItems.filter(a => isInternal(a.person));
+  const customerItems = actionItems.filter(a => !isInternal(a.person));
+
   return (
     <Flex direction="column" gap="medium">
+      {/* ── Health row ── */}
       <Statistics>
         <StatisticsItem label="Call score" number={String(score)}>
-          <Tag variant={score >= 55 ? "success" : score >= 40 ? "warning" : "error"}>{scoreText(score)}</Tag>
+          <Flex direction="column" gap="extra-small">
+            <Tag variant={tone.variant === "error" ? "error" : tone.variant}>{tone.text}</Tag>
+            {drivers.map((d, i) => <Text key={i} variant="microcopy">{d}</Text>)}
+          </Flex>
         </StatisticsItem>
         <StatisticsItem label="Sentiment" number={sentimentDisplay}>
           {sentiment?.reason ? <Text variant="microcopy">{sentiment.reason}</Text> : null}
         </StatisticsItem>
         <StatisticsItem label="Signals" number={String(signals.length)}>
-          {highCount > 0 ? <Text variant="microcopy">{highCount} high impact</Text> : null}
+          <Text variant="microcopy">{signals.filter(s => s.importance === "high").length} high impact</Text>
         </StatisticsItem>
-        <StatisticsItem label="Duration" number={durationMin ? `${durationMin} min` : "—"}>
-          {chapters.length > 0 ? <Text variant="microcopy">{chapters.length} chapters</Text> : null}
-        </StatisticsItem>
+        <StatisticsItem label="Duration" number={durationMin ? `${durationMin} min` : "—"} />
       </Statistics>
 
       <Divider />
 
-      <Tabs defaultTab="summary">
-        <Tab tabId="summary" title="Summary">
-          <Flex direction="column" gap="small">
-            {short
-              ? <SummaryLines text={short} />
-              : <Text variant="microcopy">No summary available.</Text>}
-            {extended && (
-              <Accordion title="Deep-dive notes" defaultOpen={false}>
-                <SummaryLines text={extended} />
-              </Accordion>
-            )}
+      {/* ── TL;DR ── */}
+      {tldr.length > 0 && (
+        <Tile>
+          <Flex direction="column" gap="extra-small">
+            <Text format={{ fontWeight: "bold" }}>⚡ TL;DR</Text>
+            {tldr.map((b, i) => <Text key={i}>• {b}</Text>)}
           </Flex>
-        </Tab>
+        </Tile>
+      )}
 
-        <Tab tabId="signals" title={`Signals (${signals.length})`}>
+      {/* ── Commitments ── */}
+      {(duneItems.length > 0 || customerItems.length > 0) && (
+        <Tile>
           <Flex direction="column" gap="small">
-            {signals.length === 0 && <Text variant="microcopy">No signals extracted.</Text>}
-            {signals.map((s, i) => (
-              <Box key={i}>
-                <Flex direction="column" gap="extra-small">
-                  <Flex direction="row" gap="extra-small" align="center" wrap="wrap">
-                    <Tag variant={SIGNAL_VARIANT[s.type] ?? "default"}>
-                      {SIGNAL_LABEL[s.type] ?? s.type}
-                    </Tag>
-                    {s.importance === "high" && <StatusTag variant="danger">High impact</StatusTag>}
-                    <Text variant="microcopy">{s.timestamp}</Text>
+            <Text format={{ fontWeight: "bold" }}>✅ Commitments</Text>
+            <Flex direction="row" gap="medium" wrap="wrap">
+              {duneItems.length > 0 && (
+                <Box flex={1}>
+                  <Flex direction="column" gap="extra-small">
+                    <Tag>Dune owes</Tag>
+                    {duneItems.map((a, i) => (
+                      <Flex key={i} direction="column" gap="extra-small">
+                        <Text format={{ fontWeight: "bold" }} variant="microcopy">{a.person}</Text>
+                        {a.items.map((it, j) => <Text key={j}>• {it}</Text>)}
+                      </Flex>
+                    ))}
                   </Flex>
-                  <Text format={{ fontWeight: "bold" }}>{s.label}</Text>
-                  {s.quote && (
-                    <Text variant="microcopy">
-                      “{s.quote.length > 200 ? `${s.quote.slice(0, 200)}…` : s.quote}” — {s.speaker}
-                    </Text>
-                  )}
-                  {i < signals.length - 1 && <Divider />}
+                </Box>
+              )}
+              {customerItems.length > 0 && (
+                <Box flex={1}>
+                  <Flex direction="column" gap="extra-small">
+                    <Tag variant="success">Customer owes</Tag>
+                    {customerItems.map((a, i) => (
+                      <Flex key={i} direction="column" gap="extra-small">
+                        <Text format={{ fontWeight: "bold" }} variant="microcopy">{a.person}</Text>
+                        {a.items.map((it, j) => <Text key={j}>• {it}</Text>)}
+                      </Flex>
+                    ))}
+                  </Flex>
+                </Box>
+              )}
+            </Flex>
+          </Flex>
+        </Tile>
+      )}
+
+      {/* ── Money quotes ── */}
+      {moneyQuotes.length > 0 && (
+        <Tile>
+          <Flex direction="column" gap="small">
+            <Text format={{ fontWeight: "bold" }}>💰 Money on the table</Text>
+            {moneyQuotes.map((s, i) => (
+              <Flex key={i} direction="column" gap="extra-small">
+                <Flex direction="row" gap="extra-small" align="center">
+                  <Tag variant={SIGNAL_VARIANT[s.type] ?? "default"}>{SIGNAL_LABEL[s.type] ?? s.type}</Tag>
+                  <Text variant="microcopy">{s.timestamp} · {s.speaker}</Text>
                 </Flex>
-              </Box>
+                <Text>“{s.quote}”</Text>
+                {i < moneyQuotes.length - 1 && <Divider distance="small" />}
+              </Flex>
             ))}
           </Flex>
-        </Tab>
+        </Tile>
+      )}
 
-        <Tab tabId="chapters" title={`Chapters (${chapters.length})`}>
-          <List variant="unordered-styleless">
-            {chapters.map((c, i) => (
-              <Text key={i}>
-                <Text format={{ fontWeight: "bold" }} inline>{c.time}</Text>
-                {"   "}{c.title}
-              </Text>
+      {/* ── Risks ── */}
+      {risks.length > 0 && (
+        <Tile>
+          <Flex direction="column" gap="small">
+            <Text format={{ fontWeight: "bold" }}>⚠️ Risks & objections</Text>
+            {risks.map((s, i) => (
+              <Flex key={i} direction="column" gap="extra-small">
+                <Flex direction="row" gap="extra-small" align="center">
+                  <Tag variant="error">{SIGNAL_LABEL[s.type] ?? s.type}</Tag>
+                  {s.importance === "high" && <StatusTag variant="danger">High</StatusTag>}
+                  <Text variant="microcopy">{s.timestamp} · {s.speaker}</Text>
+                </Flex>
+                <Text format={{ fontWeight: "bold" }}>{s.label}</Text>
+                {s.quote && <Text variant="microcopy">“{s.quote}”</Text>}
+                {i < risks.length - 1 && <Divider distance="small" />}
+              </Flex>
             ))}
-          </List>
-        </Tab>
-      </Tabs>
+          </Flex>
+        </Tile>
+      )}
+
+      {/* ── Decision process ── */}
+      {decisionProcess.length > 0 && (
+        <Tile>
+          <Flex direction="column" gap="small">
+            <Text format={{ fontWeight: "bold" }}>🧭 Decision process & timeline</Text>
+            {decisionProcess.map((s, i) => (
+              <Flex key={i} direction="column" gap="extra-small">
+                <Flex direction="row" gap="extra-small" align="center">
+                  <Tag variant={SIGNAL_VARIANT[s.type] ?? "default"}>{SIGNAL_LABEL[s.type] ?? s.type}</Tag>
+                  <Text variant="microcopy">{s.timestamp} · {s.speaker}</Text>
+                </Flex>
+                <Text>{s.label}{s.quote ? ` — “${s.quote}”` : ""}</Text>
+                {i < decisionProcess.length - 1 && <Divider distance="small" />}
+              </Flex>
+            ))}
+          </Flex>
+        </Tile>
+      )}
+
+      {/* ── Open questions ── */}
+      {openQuestions.length > 0 && (
+        <Tile>
+          <Flex direction="column" gap="extra-small">
+            <Text format={{ fontWeight: "bold" }}>❓ Open questions</Text>
+            {openQuestions.map((q, i) => <Text key={i}>• {q}</Text>)}
+          </Flex>
+        </Tile>
+      )}
+
+      {/* ── Everything else, collapsed ── */}
+      <Accordion title={`All signals (${signals.length})`} defaultOpen={false}>
+        <Flex direction="column" gap="small">
+          {signals.map((s, i) => (
+            <Flex key={i} direction="column" gap="extra-small">
+              <Flex direction="row" gap="extra-small" align="center" wrap="wrap">
+                <Tag variant={SIGNAL_VARIANT[s.type] ?? "default"}>{SIGNAL_LABEL[s.type] ?? s.type}</Tag>
+                {s.importance === "high" && <StatusTag variant="danger">High</StatusTag>}
+                <Text variant="microcopy">{s.timestamp} · {s.speaker}</Text>
+              </Flex>
+              <Text format={{ fontWeight: "bold" }}>{s.label}</Text>
+              {s.quote && <Text variant="microcopy">“{s.quote.length > 200 ? `${s.quote.slice(0, 200)}…` : s.quote}”</Text>}
+              {i < signals.length - 1 && <Divider />}
+            </Flex>
+          ))}
+        </Flex>
+      </Accordion>
+
+      {extended && (
+        <Accordion title="Full call notes" defaultOpen={false}>
+          <SummaryLines text={extended} />
+        </Accordion>
+      )}
     </Flex>
   );
 };

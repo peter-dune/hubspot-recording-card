@@ -1,0 +1,12 @@
+{
+  "uid": "hubspot_iframe_test_card",
+  "type": "card",
+  "config": {
+    "name": "Iframe Test (unused — safe to remove)",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/IframeTest.tsx",
+    "objectTypes": [
+      "p_recordings"
+    ]
+  }
+}
