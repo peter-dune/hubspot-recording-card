@@ -153,6 +153,7 @@ const IntelligenceHubCard = () => {
         "call_summary_short", "call_summary_extended",
         "call_signals", "transcript_timed",
         "participants", "participants_emails",
+        "call_score",
       ])
       .then(setProps)
       .finally(() => setLoading(false));
@@ -181,7 +182,19 @@ const IntelligenceHubCard = () => {
     internalNames.some(n => n.toLowerCase().split(" ")[0] === (speaker || "").toLowerCase().split(" ")[0]);
 
   const sentiment = useMemo(() => parseSentiment(short), [short]);
-  const { score, drivers } = useMemo(() => computeScore(signals, sentiment?.label ?? null), [signals, sentiment]);
+
+  // GPT-scored with rationale when available; heuristic fallback otherwise
+  const gptScore = useMemo<{ score: number; label: string; rationale: string } | null>(() => {
+    try {
+      const p = JSON.parse(props.call_score || "");
+      return typeof p.score === "number" ? p : null;
+    } catch { return null; }
+  }, [props.call_score]);
+
+  const heuristic = useMemo(() => computeScore(signals, sentiment?.label ?? null), [signals, sentiment]);
+  const score = gptScore?.score ?? heuristic.score;
+  const drivers = gptScore ? [] : heuristic.drivers;
+  const rationale = gptScore?.rationale ?? "";
   const tone = scoreTone(score);
 
   const durationMin = useMemo(() => {
@@ -233,8 +246,10 @@ const IntelligenceHubCard = () => {
       <Statistics>
         <StatisticsItem label="Call score" number={String(score)}>
           <Flex direction="column" gap="extra-small">
-            <Tag variant={tone.variant === "error" ? "error" : tone.variant}>{tone.text}</Tag>
-            {drivers.map((d, i) => <Text key={i} variant="microcopy">{d}</Text>)}
+            <Tag variant={tone.variant === "error" ? "error" : tone.variant}>{gptScore?.label || tone.text}</Tag>
+            {rationale
+              ? <Text variant="microcopy">{rationale}</Text>
+              : drivers.map((d, i) => <Text key={i} variant="microcopy">{d}</Text>)}
           </Flex>
         </StatisticsItem>
         <StatisticsItem label="Sentiment" number={sentimentDisplay}>
