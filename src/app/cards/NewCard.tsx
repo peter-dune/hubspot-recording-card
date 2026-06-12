@@ -34,12 +34,28 @@ function formatDate(raw: string): string {
 
 interface Contact { id: string; name: string; title: string; }
 
+/**
+ * Extract internal Dune team members from the participants properties.
+ * Internal members come first in both lists and always have @dune.com emails.
+ */
+function extractDuneTeam(namesRaw: string, emailsRaw: string): string[] {
+  const names = (namesRaw || "").split(",").map(s => s.trim()).filter(Boolean);
+  const emails = (emailsRaw || "").split(",").map(s => s.trim()).filter(Boolean);
+  const team: string[] = [];
+  for (let i = 0; i < names.length && i < emails.length; i++) {
+    if (emails[i].toLowerCase().endsWith("@dune.com")) team.push(names[i]);
+    else break; // internal members are the head of the list
+  }
+  return team;
+}
+
 const RecordingCard = () => {
   const { actions, context, runServerlessFunction } = useExtensionApi<"crm.record.tab">();
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [title, setTitle] = useState<string>("");
   const [host, setHost] = useState<string>("");
   const [date, setDate] = useState<string>("");
+  const [duneTeam, setDuneTeam] = useState<string[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +63,7 @@ const RecordingCard = () => {
   useEffect(() => {
     const recordId = context.crm.objectId;
     Promise.all([
-      actions.fetchCrmObjectProperties(["recording_url", "call_title", "call_name", "host", "call_date"]),
+      actions.fetchCrmObjectProperties(["recording_url", "call_title", "call_name", "host", "call_date", "participants", "participants_emails"]),
       recordId
         ? runServerlessFunction({
             name: "hubspot_recording_card_app_function",
@@ -64,6 +80,7 @@ const RecordingCard = () => {
         setTitle(props["call_title"] || props["call_name"] || "");
         setHost(props["host"] || "");
         setDate(formatDate(props["call_date"] || ""));
+        setDuneTeam(extractDuneTeam(props["participants"] || "", props["participants_emails"] || ""));
 
         if (contactsResult?.status === "SUCCESS" && contactsResult.response?.contacts) {
           setContacts(contactsResult.response.contacts);
@@ -92,6 +109,11 @@ const RecordingCard = () => {
       <Flex direction="row" gap="extra-small" wrap="wrap">
         {date && <Tag variant="info">{date}</Tag>}
         {host && <Tag>🎙 {host}</Tag>}
+        {duneTeam
+          .filter((n) => n.toLowerCase() !== host.toLowerCase())
+          .map((n) => (
+            <Tag key={n}>{n}</Tag>
+          ))}
       </Flex>
 
       {contacts.length > 0 && (
