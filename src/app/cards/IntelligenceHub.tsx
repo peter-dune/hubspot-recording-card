@@ -15,6 +15,7 @@ import {
   Accordion,
   Tile,
   Heading,
+  Tooltip,
 } from "@hubspot/ui-extensions";
 
 hubspot.extend(() => <IntelligenceHubCard />);
@@ -247,7 +248,9 @@ const IntelligenceHubCard = () => {
       <Tile>
         <Flex direction="column" gap="extra-small">
           <Flex direction="row" gap="small" align="baseline">
-            <Text format={{ fontWeight: "bold" }} variant="microcopy">CALL SCORE</Text>
+            <Tooltip text="AI-scored from the transcript across four dimensions, 0–25 each: buying intent, decision path (right people + clear approvals), momentum (commitments with owners and dates), and risk (objections, competitors, budget). Judged from the customer's words, weighing how the call ended.">
+              <Text format={{ fontWeight: "bold" }} variant="microcopy">CALL SCORE ⓘ</Text>
+            </Tooltip>
           </Flex>
           <Flex direction="row" gap="small" align="center">
             <Heading>{String(score)} / 100</Heading>
