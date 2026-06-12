@@ -134,7 +134,7 @@ const RecordingCard = () => {
       <Divider />
 
       <Button
-        variant="secondary"
+        variant="primary"
         onClick={() =>
           actions.openIframeModal({
             uri: playerUrl,
