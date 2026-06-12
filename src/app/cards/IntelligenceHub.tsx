@@ -250,9 +250,18 @@ const IntelligenceHubCard = () => {
         <Flex direction="column" gap="extra-small">
           <Flex direction="row" gap="extra-small" align="center">
             <Text format={{ fontWeight: "bold" }} variant="microcopy">CALL SCORE</Text>
-            <Tooltip text="AI-scored from the transcript across four dimensions, 0–25 each: buying intent, decision path (right people + clear approvals), momentum (commitments with owners and dates), and risk (objections, competitors, budget). Judged from the customer's words, weighing how the call ended.">
-              <Button variant="transparent" size="extra-small" onClick={() => {}}>ⓘ</Button>
-            </Tooltip>
+            <Button
+              variant="transparent"
+              size="extra-small"
+              onClick={() => {}}
+              overlay={
+                <Tooltip placement="bottom">
+                  AI-scored from the transcript across four dimensions, 0–25 each: buying intent, decision path (right people + clear approvals), momentum (commitments with owners and dates), and risk (objections, competitors, budget). Judged from the customer's words, weighing how the call ended.
+                </Tooltip>
+              }
+            >
+              ⓘ
+            </Button>
           </Flex>
           <Flex direction="row" gap="small" align="center">
             <Heading>{String(score)} / 100</Heading>
