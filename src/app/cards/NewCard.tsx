@@ -102,6 +102,7 @@ const RecordingCard = () => {
     return <ErrorState title="Recording unavailable"><Text>{error ?? "No recording found."}</Text></ErrorState>;
   }
 
+
   return (
     <Flex direction="column" gap="small">
       {title && <Heading level={4}>{title}</Heading>}
