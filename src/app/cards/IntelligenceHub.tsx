@@ -89,7 +89,7 @@ function computeScore(signals: Signal[], sentiment: string | null): { score: num
 function scoreTone(score: number): { text: string; variant: "success" | "warning" | "error" } {
   if (score >= 70) return { text: "Strong", variant: "success" };
   if (score >= 55) return { text: "Promising", variant: "success" };
-  if (score >= 40) return { text: "Neutral", variant: "warning" };
+  if (score >= 40) return { text: "Mixed", variant: "warning" };
   return { text: "At risk", variant: "error" };
 }
 
