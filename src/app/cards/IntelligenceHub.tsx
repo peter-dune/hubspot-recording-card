@@ -14,6 +14,7 @@ import {
   StatisticsItem,
   Accordion,
   Tile,
+  Heading,
 } from "@hubspot/ui-extensions";
 
 hubspot.extend(() => <IntelligenceHubCard />);
@@ -242,16 +243,24 @@ const IntelligenceHubCard = () => {
 
   return (
     <Flex direction="column" gap="medium">
+      {/* ── Call score — front and center ── */}
+      <Tile>
+        <Flex direction="column" gap="extra-small">
+          <Flex direction="row" gap="small" align="baseline">
+            <Text format={{ fontWeight: "bold" }} variant="microcopy">CALL SCORE</Text>
+          </Flex>
+          <Flex direction="row" gap="small" align="center">
+            <Heading>{String(score)} / 100</Heading>
+            <Tag variant={tone.variant === "error" ? "error" : tone.variant}>{gptScore?.label || tone.text}</Tag>
+          </Flex>
+          {rationale
+            ? <Text>{rationale}</Text>
+            : drivers.length > 0 && <Text variant="microcopy">{drivers.join("   ")}</Text>}
+        </Flex>
+      </Tile>
+
       {/* ── Health row ── */}
       <Statistics>
-        <StatisticsItem label="Call score" number={String(score)}>
-          <Flex direction="column" gap="extra-small">
-            <Tag variant={tone.variant === "error" ? "error" : tone.variant}>{gptScore?.label || tone.text}</Tag>
-            {rationale
-              ? <Text variant="microcopy">{rationale}</Text>
-              : drivers.map((d, i) => <Text key={i} variant="microcopy">{d}</Text>)}
-          </Flex>
-        </StatisticsItem>
         <StatisticsItem label="Sentiment" number={sentimentDisplay}>
           {sentiment?.reason ? <Text variant="microcopy">{sentiment.reason}</Text> : null}
         </StatisticsItem>
