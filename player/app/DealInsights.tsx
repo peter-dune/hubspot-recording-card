@@ -73,88 +73,90 @@ export default function DealInsights({ recordId, title, metadata }: {
 
   return (
     <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"22px 26px 36px"}}>
-      <div style={{maxWidth:1440,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",gap:18}}>
+      <div style={{maxWidth:1120,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",gap:16}}>
 
-        {/* Header */}
+        {/* Header — flags THIS call */}
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid var(--accent)",borderRadius:99,padding:"3px 9px"}}>This call</span>
           <h2 style={{margin:0,fontSize:21,fontWeight:600,color:"var(--text-primary)"}}>{title}</h2>
           {isFirstDemo && <Badge text="★ FIRST DEMO" bg="#f4603e" fg="#fff" />}
           {stage && !isFirstDemo && <Badge text={stage.toUpperCase()} bg="var(--surface-C)" fg="var(--text-secondary)" />}
         </div>
 
-        {/* Two columns on wide modals */}
-        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1.15fr)",gap:18,alignItems:"start"}}>
-
-          {/* LEFT — this call's intelligence */}
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 220px",gap:14}}>
-              <Card>
-                <Label>Call score · {score.framework || "BANT"}</Label>
-                {typeof score.score==="number" ? (
-                  <>
-                    <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:2}}>
-                      <span style={{fontSize:40,fontWeight:700,color:scoreColor(score.score),lineHeight:1}}>{score.score}</span>
-                      <span style={{fontSize:14,color:"var(--text-disable)"}}>/ 100</span>
-                      {score.label && <span style={{fontSize:13,fontWeight:600,color:scoreColor(score.score)}}>{score.label}</span>}
-                    </div>
-                    {score.rationale && <p style={{margin:"10px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
-                  </>
-                ) : <p style={{fontSize:13,color:"var(--text-disable)",marginTop:6}}>Not scored yet.</p>}
-              </Card>
-              <Card>
-                <Label>Sentiment</Label>
-                <div style={{fontSize:22,fontWeight:700,marginTop:4,color:SENT_COLOR[sentiment]}}>{SENT_ICON[sentiment]} {SENT_LABEL[sentiment]}</div>
-                {sent.reason && <p style={{margin:"8px 0 0",fontSize:12,lineHeight:1.45,color:"var(--text-secondary)"}}>{sent.reason}</p>}
-                {sent.confidence && <p style={{margin:"6px 0 0",fontSize:11,color:"var(--text-disable)"}}>Confidence: {sent.confidence}</p>}
-              </Card>
-            </div>
-
-            {dims && (
-              <Card>
-                <Label>Qualification breakdown · BANT</Label>
-                <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:10}}>
-                  {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
+        {/* This call: score + sentiment */}
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 300px",gap:14}}>
+          <Card>
+            <Label>Call score · {score.framework || "BANT"}</Label>
+            {typeof score.score==="number" ? (
+              <>
+                <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:2}}>
+                  <span style={{fontSize:44,fontWeight:700,color:scoreColor(score.score),lineHeight:1}}>{score.score}</span>
+                  <span style={{fontSize:14,color:"var(--text-disable)"}}>/ 100</span>
+                  {score.label && <span style={{fontSize:13,fontWeight:600,color:scoreColor(score.score)}}>{score.label}</span>}
                 </div>
-                {dims.fit_usage && (
-                  <>
-                    <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
-                      <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
-                      <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
-                      <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
-                    </div>
-                    <DimRow label="Fit / Usage" d={dims.fit_usage} />
-                  </>
-                )}
-              </Card>
+                {score.rationale && <p style={{margin:"10px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:18,fontWeight:600,marginTop:4,color:"var(--text-disable)"}}>{score.label || "Not scored yet"}</div>
+                {score.rationale && <p style={{margin:"8px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
+              </>
             )}
-          </div>
+          </Card>
+          <Card>
+            <Label>Sentiment</Label>
+            <div style={{fontSize:24,fontWeight:700,marginTop:4,color:SENT_COLOR[sentiment]}}>{SENT_ICON[sentiment]} {SENT_LABEL[sentiment]}</div>
+            {sent.reason && <p style={{margin:"8px 0 0",fontSize:12,lineHeight:1.45,color:"var(--text-secondary)"}}>{sent.reason}</p>}
+            {sent.confidence && <p style={{margin:"6px 0 0",fontSize:11,color:"var(--text-disable)"}}>Confidence: {sent.confidence}</p>}
+          </Card>
+        </div>
 
-          {/* RIGHT — deal trends */}
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <Label>Deal · {dealName || title}</Label>
-            {!points ? <p style={msg}>Loading deal timeline…</p>
-              : points.length===0 ? <p style={msg}>No processed calls on this deal yet.</p>
-              : <>
-                  <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
-                  <BantChart points={points} enabled={enabled} setEnabled={setEnabled} hover={hover} setHover={setHover} currentId={recordId} />
-                  <div>
-                    <Label>Calls on this deal ({points.length})</Label>
-                    <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
-                      {points.map((p,i)=>(
-                        <div key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)}
-                          style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
-                            background:hover===i?"var(--surface-C)":"var(--surface-B)",border:`1px solid ${p.id===recordId?"var(--accent)":"var(--border-weaker)"}`,transition:"background 120ms"}}>
-                          <span style={{width:9,height:9,borderRadius:"50%",background:SENT_COLOR[p.sentiment],flexShrink:0}}/>
-                          <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-disable)",width:52,flexShrink:0}}>{p.dateLabel||"—"}</span>
-                          <span style={{fontSize:13,color:"var(--text-primary)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}{p.id===recordId?"  ·  this call":""}</span>
-                          {p.stage&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,textTransform:"uppercase",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"3px 9px",flexShrink:0}}>{p.stage}</span>}
-                          {p.score!=null&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:scoreColor(p.score),width:30,textAlign:"right",flexShrink:0}}>{p.score}</span>}
-                        </div>
-                      ))}
-                    </div>
+        {/* BANT breakdown — full width, two columns of dimensions */}
+        {dims && (
+          <Card>
+            <Label>Qualification breakdown · BANT</Label>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:"16px 32px",marginTop:12}}>
+              {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
+            </div>
+            {dims.fit_usage && (
+              <>
+                <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
+                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                  <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
+                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                </div>
+                <DimRow label="Fit / Usage" d={dims.fit_usage} />
+              </>
+            )}
+          </Card>
+        )}
+
+        {/* Deal trends — full width, roomy */}
+        <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:14}}>
+          <Label>Deal · {dealName || title}</Label>
+          {!points ? <p style={msg}>Loading deal timeline…</p>
+            : points.length===0 ? <p style={msg}>No processed calls on this deal yet.</p>
+            : <>
+                <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
+                <BantChart points={points} enabled={enabled} setEnabled={setEnabled} hover={hover} setHover={setHover} currentId={recordId} />
+                <div>
+                  <Label>Calls on this deal ({points.length})</Label>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                    {points.map((p,i)=>(
+                      <div key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)}
+                        style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
+                          background:hover===i?"var(--surface-C)":(p.id===recordId?"color-mix(in srgb,var(--accent) 7%,var(--surface-B))":"var(--surface-B)"),border:`1px solid ${p.id===recordId?"var(--accent)":"var(--border-weaker)"}`,transition:"background 120ms"}}>
+                        <span style={{width:9,height:9,borderRadius:"50%",background:SENT_COLOR[p.sentiment],flexShrink:0}}/>
+                        <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-disable)",width:52,flexShrink:0}}>{p.dateLabel||"—"}</span>
+                        <span style={{fontSize:13,color:"var(--text-primary)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
+                        {p.id===recordId&&<span style={{fontFamily:"var(--font-mono)",fontSize:9.5,textTransform:"uppercase",color:"var(--accent)",border:"1px solid var(--accent)",borderRadius:99,padding:"2px 7px",flexShrink:0}}>This call</span>}
+                        {p.stage&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,textTransform:"uppercase",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"3px 9px",flexShrink:0}}>{p.stage}</span>}
+                        {p.score!=null&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:scoreColor(p.score),width:30,textAlign:"right",flexShrink:0}}>{p.score}</span>}
+                      </div>
+                    ))}
                   </div>
-                </>}
-          </div>
+                </div>
+              </>}
         </div>
       </div>
     </div>
@@ -162,7 +164,7 @@ export default function DealInsights({ recordId, title, metadata }: {
 }
 
 function SentimentChart({ points, hover, setHover, currentId }: { points: Point[]; hover: number|null; setHover:(i:number|null)=>void; currentId:string|null }) {
-  const W=760,H=200,padX=44,padY=30; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
+  const W=1040,H=250,padX=52,padY=40; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
   const SY:Record<string,number>={positive:1,neutral:0,"at-risk":-1};
   const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
   const y=(s:string)=>padY+plotH*(1-((SY[s]??0)+1)/2);
@@ -179,13 +181,18 @@ function SentimentChart({ points, hover, setHover, currentId }: { points: Point[
         {rows.map(([s,l])=>(<g key={s}><line x1={padX} x2={W-padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s==="neutral"?"0":"3 4"} strokeWidth={1}/><text x={8} y={y(s)+4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>))}
         {area&&<path d={area} fill="url(#sentFill)" stroke="none"/>}
         {line&&<path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
-        {points.map((p,i)=>(
+        {points.map((p,i)=>{
+          const cur=p.id===currentId;
+          return (
           <g key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
-            <circle cx={x(i)} cy={y(p.sentiment)} r={hover===i?8:p.id===currentId?7:5.5} fill={SENT_COLOR[p.sentiment]} stroke={p.id===currentId?"var(--accent)":"var(--surface-A)"} strokeWidth={p.id===currentId?3:2.5}/>
-            <rect x={x(i)-16} y={0} width={32} height={H} fill="transparent"/>
-            <text x={x(i)} y={H-10} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY-14} y2={H-24} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5}/>}
+            {cur && <circle cx={x(i)} cy={y(p.sentiment)} r={13} fill="none" stroke="var(--accent)" strokeWidth={1.5} opacity={0.4}/>}
+            <circle cx={x(i)} cy={y(p.sentiment)} r={hover===i?9:cur?8:5.5} fill={SENT_COLOR[p.sentiment]} stroke={cur?"var(--accent)":"var(--surface-A)"} strokeWidth={cur?3:2.5}/>
+            {cur && <text x={x(i)} y={padY-20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
+            <rect x={x(i)-18} y={0} width={36} height={H} fill="transparent"/>
+            <text x={x(i)} y={H-8} fontSize={10} fill={cur?"var(--accent)":"var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
           </g>
-        ))}
+        );})}
       </svg>
       {hover!=null&&points[hover]&&(
         <Tooltip x={(x(hover)/W)*100} p={points[hover]} />
@@ -198,12 +205,14 @@ function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: 
   points: Point[]; enabled: Record<string,boolean>; setEnabled:(e:Record<string,boolean>)=>void;
   hover: number|null; setHover:(i:number|null)=>void; currentId:string|null;
 }) {
-  const W=760,H=230,padX=34,padY=24; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
+  const W=1040,H=300,padX=42,padY=34; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
   const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
   const y=(v:number)=>padY+plotH*(1-v/20);
+  const scoredCount=points.filter(p=>Object.values(p.dimensions||{}).some(d=>d.applicable)).length;
   return (
     <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px"}}>
       <p style={chartTitle}>BANT + Fit over time</p>
+      {scoredCount<2 && <p style={{fontSize:11.5,color:"var(--text-disable)",margin:"0 0 6px 8px"}}>Trend lines appear once 2+ calls on this deal have substantive scoring ({scoredCount} so far).</p>}
       {/* toggles */}
       <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 6px 8px"}}>
         {DIM_META.map(d=>(
@@ -227,7 +236,15 @@ function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: 
           const dd=p.dimensions?.[d.key]; if(!dd?.applicable) return null;
           return <circle key={d.key+p.id} cx={x(i)} cy={y(dd.score)} r={hover===i?5:3.5} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5}/>;
         }))}
-        {points.map((p,i)=>(<g key={"h"+p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}><rect x={x(i)-16} y={0} width={32} height={H} fill="transparent"/><text x={x(i)} y={H-6} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text></g>))}
+        {points.map((p,i)=>{
+          const cur=p.id===currentId;
+          return (<g key={"h"+p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY-16} y2={H-20} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5}/>}
+            {cur && <text x={x(i)} y={padY-20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
+            <rect x={x(i)-18} y={0} width={36} height={H} fill="transparent"/>
+            <text x={x(i)} y={H-4} fontSize={10} fill={cur?"var(--accent)":"var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
+          </g>);
+        })}
       </svg>
       {hover!=null&&points[hover]&&(
         <Tooltip x={(x(hover)/W)*100} p={points[hover]} showDims enabled={enabled} />
