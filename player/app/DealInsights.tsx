@@ -17,6 +17,7 @@ export default function DealInsights({ recordId, title, metadata }: {
 }) {
   const [points, setPoints] = useState<Point[] | null>(null);
   const [dealName, setDealName] = useState("");
+  const [scope, setScope] = useState<"deal" | "company" | "none">("deal");
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     Object.fromEntries(DIM_META.map(d => [d.key, d.key === "budget"])) // Budget on by default
   );
@@ -24,7 +25,7 @@ export default function DealInsights({ recordId, title, metadata }: {
   useEffect(() => {
     if (!recordId) return;
     fetch(`/api/deal-sentiment?recordId=${recordId}`).then(r => r.json())
-      .then(d => { setDealName(d.dealName || ""); setPoints(d.points || []); })
+      .then(d => { setDealName(d.dealName || ""); setScope(d.scope || "deal"); setPoints(d.points || []); })
       .catch(() => setPoints([]));
   }, [recordId]);
 
@@ -43,7 +44,8 @@ export default function DealInsights({ recordId, title, metadata }: {
 
         {/* Deal trends */}
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Label>Deal · {dealName || title}</Label>
+          <Label>{scope === "company" ? "Account" : "Deal"} · {dealName || title}</Label>
+          {scope === "company" && <p style={{ fontSize: 11.5, color: "var(--text-disable)", margin: "-8px 0 0" }}>This call isn't linked to a deal — showing the timeline across all of this account's calls.</p>}
           {!points ? <p style={msg}>Loading deal timeline…</p>
             : points.length === 0 ? <p style={msg}>No processed calls on this deal yet.</p>
             : <>

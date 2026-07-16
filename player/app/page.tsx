@@ -359,7 +359,7 @@ export default function Page() {
         <DealInsights recordId={recordId} title={title} metadata={metadata} signals={signals} />
       )}
       {tab==="firstdemo" && (
-        <FirstDemo recordId={recordId} title={title} />
+        <FirstDemo recordId={recordId} title={title} metadata={metadata} />
       )}
       {tab==="recording" && (
       /* BODY */

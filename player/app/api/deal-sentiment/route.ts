@@ -27,7 +27,8 @@ function dateLabel(ms: number): string {
 
 /**
  * GET /api/deal-sentiment?recordId=<recording id>
- * Returns the sentiment timeline across every processed call on the same deal.
+ * Returns the sentiment timeline across every processed call on the same deal —
+ * or, when the recording has no deal, across the same COMPANY's calls.
  */
 export async function GET(req: NextRequest) {
   const recordId = req.nextUrl.searchParams.get("recordId");
@@ -36,19 +37,34 @@ export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_ACCESS_TOKEN;
   if (!token) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
 
-  // 1. recording → deal
+  // 1. recording → deal (preferred) → else company
   const dealAssoc = await hsGet(`${HS}/crm/v4/objects/${RECORDINGS}/${recordId}/associations/deals`, token);
   const dealId = dealAssoc.ok ? (await dealAssoc.json()).results?.[0]?.toObjectId : null;
-  if (!dealId) return NextResponse.json({ dealName: "", points: [] });
 
-  // 2. deal name + all recordings on the deal
-  const [dealRes, recAssoc] = await Promise.all([
-    hsGet(`${HS}/crm/v3/objects/deals/${dealId}?properties=dealname`, token),
-    hsGet(`${HS}/crm/v4/objects/deals/${dealId}/associations/${RECORDINGS}?limit=100`, token),
-  ]);
-  const dealName = dealRes.ok ? (await dealRes.json()).properties?.dealname ?? "" : "";
-  const recIds: string[] = recAssoc.ok ? ((await recAssoc.json()).results ?? []).map((r: { toObjectId: string }) => String(r.toObjectId)) : [];
-  if (recIds.length === 0) return NextResponse.json({ dealName, points: [] });
+  let dealName = "", scope = "deal";
+  let recIds: string[] = [];
+  if (dealId) {
+    const [dealRes, recAssoc] = await Promise.all([
+      hsGet(`${HS}/crm/v3/objects/deals/${dealId}?properties=dealname`, token),
+      hsGet(`${HS}/crm/v4/objects/deals/${dealId}/associations/${RECORDINGS}?limit=100`, token),
+    ]);
+    dealName = dealRes.ok ? (await dealRes.json()).properties?.dealname ?? "" : "";
+    recIds = recAssoc.ok ? ((await recAssoc.json()).results ?? []).map((r: { toObjectId: string }) => String(r.toObjectId)) : [];
+  } else {
+    // Company fallback — timeline across the account's calls
+    const coAssoc = await hsGet(`${HS}/crm/v4/objects/${RECORDINGS}/${recordId}/associations/companies`, token);
+    const companyId = coAssoc.ok ? (await coAssoc.json()).results?.[0]?.toObjectId : null;
+    if (!companyId) return NextResponse.json({ dealName: "", scope: "none", points: [] });
+    scope = "company";
+    const [coRes, recAssoc] = await Promise.all([
+      hsGet(`${HS}/crm/v3/objects/companies/${companyId}?properties=name`, token),
+      hsGet(`${HS}/crm/v4/objects/companies/${companyId}/associations/${RECORDINGS}?limit=100`, token),
+    ]);
+    dealName = coRes.ok ? (await coRes.json()).properties?.name ?? "" : "";
+    recIds = recAssoc.ok ? ((await recAssoc.json()).results ?? []).map((r: { toObjectId: string }) => String(r.toObjectId)) : [];
+  }
+  if (!recIds.includes(recordId)) recIds.push(recordId); // always include the opened call
+  if (recIds.length === 0) return NextResponse.json({ dealName, scope, points: [] });
 
   // 3. batch-read sentiment/date/title/stage/score for each recording
   const batch = await fetch(`${HS}/crm/v3/objects/${RECORDINGS}/batch/read`, {
@@ -59,7 +75,7 @@ export async function GET(req: NextRequest) {
       inputs: recIds.map(id => ({ id })),
     }),
   });
-  if (!batch.ok) return NextResponse.json({ dealName, points: [] });
+  if (!batch.ok) return NextResponse.json({ dealName, scope, points: [] });
   const results = (await batch.json()).results ?? [];
 
   const points = results.map((r: { id: string; properties: Record<string, string> }) => {
@@ -107,5 +123,5 @@ export async function GET(req: NextRequest) {
     };
   }).sort((a: { dateMs: number }, b: { dateMs: number }) => a.dateMs - b.dateMs);
 
-  return NextResponse.json({ dealName, points });
+  return NextResponse.json({ dealName, scope, points });
 }
