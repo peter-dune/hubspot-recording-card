@@ -11,7 +11,16 @@ async function hsGet(url: string, token: string) {
   } finally { clearTimeout(t); }
 }
 
+function parseDateMs(raw: string | undefined): number {
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!isNaN(n) && n > 0) return n;      // epoch-ms string
+  const t = new Date(raw).getTime();     // ISO string fallback
+  return isNaN(t) ? 0 : t;
+}
+
 function dateLabel(ms: number): string {
+  if (!ms) return "";
   try { return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
   catch { return ""; }
 }

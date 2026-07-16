@@ -4,7 +4,7 @@ import DealInsights from "./DealInsights";
 
 /* ── types ─────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
-interface Metadata { call_title?: string; call_name?: string; host?: string; call_date?: string; }
+interface Metadata { call_title?: string; call_name?: string; host?: string; call_date?: string; [k: string]: string | undefined; }
 interface Chapter { time: string; title: string; }
 interface Signal {
   type: string;
@@ -355,7 +355,7 @@ export default function Page() {
       </div>
 
       {tab==="insights" ? (
-        <DealInsights recordId={recordId} title={title} />
+        <DealInsights recordId={recordId} title={title} metadata={metadata} signals={signals} />
       ) : (
       /* BODY */
       <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"200px 1fr 420px":"1fr 420px",gap:12,padding:"14px 18px 18px"}}>

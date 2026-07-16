@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 
   if (recordId) {
     try {
-      const props = ["call_title", "host", "call_date", "call_name", "transcript", "transcript_timed", "call_chapters", "call_signals", "call_summary_short", "call_summary_extended", "participants", "participants_emails"];
+      const props = ["call_title", "host", "call_date", "call_name", "transcript", "transcript_timed", "call_chapters", "call_signals", "call_summary_short", "call_summary_extended", "participants", "participants_emails", "call_score", "call_sentiment", "call_stage"];
       const metaRes = await get(
         `https://api.hubapi.com/crm/v3/objects/p_recordings/${recordId}?properties=${props.join(",")}`,
         token
