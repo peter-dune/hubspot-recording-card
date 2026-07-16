@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode } from "react";
+import DealInsights from "./DealInsights";
 
 /* ── types ─────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
@@ -260,6 +261,8 @@ export default function Page() {
   const [signals,setSignals]=useState<Signal[]>([]);
   const [error,setError]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
+  const [recordId,setRecordId]=useState<string|null>(null);
+  const [tab,setTab]=useState<"recording"|"insights">("recording");
 
   const videoRef=useRef<HTMLVideoElement>(null);
   const [playing,setPlaying]=useState(false);
@@ -282,6 +285,7 @@ export default function Page() {
     const p=new URLSearchParams(window.location.search);
     const engagementId=p.get("engagementId"); const recordId=p.get("recordId");
     if (!engagementId){setError("No engagementId.");setLoading(false);return;}
+    setRecordId(recordId);
     const qs=new URLSearchParams({engagementId});
     if(recordId)qs.set("recordId",recordId);
     fetch(`/api/recording-data?${qs}`).then(r=>r.json()).then(data=>{
@@ -337,7 +341,23 @@ export default function Page() {
     <div style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden",background:"var(--surface-A)"}}>
 
 
-      {/* BODY */}
+      {/* TAB BAR */}
+      <div style={{display:"flex",gap:2,padding:"10px 18px 0",flexShrink:0}}>
+        {([["recording","Recording"],["insights","Deal Insights"]] as const).map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{
+            appearance:"none",border:"none",background:"transparent",cursor:"pointer",
+            fontFamily:"var(--font-mono)",fontSize:12,letterSpacing:"0.03em",padding:"9px 16px",
+            color:tab===id?"var(--text-primary)":"var(--text-disable)",
+            borderBottom:tab===id?"2px solid var(--accent)":"2px solid transparent",
+            fontWeight:tab===id?600:400,transition:"color 140ms",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab==="insights" ? (
+        <DealInsights recordId={recordId} title={title} />
+      ) : (
+      /* BODY */
       <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"200px 1fr 420px":"1fr 420px",gap:12,padding:"14px 18px 18px"}}>
 
         {/* LEFT RAIL */}
@@ -511,6 +531,7 @@ export default function Page() {
           </div>
         </div>
       </div>
+      )}
 
       <style>{`
         @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(244,96,62,0.4);}70%{box-shadow:0 0 0 6px rgba(244,96,62,0);}}
