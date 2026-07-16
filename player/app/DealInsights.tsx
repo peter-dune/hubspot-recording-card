@@ -99,7 +99,7 @@ function SentimentChart({ points, currentId }: { points: Point[]; currentId: str
           </g>;
         })}
       </svg>
-      {hover != null && points[hover] && <SentimentTip x={(x(hover) / W) * 100} p={points[hover]} />}
+      {hover != null && points[hover] && <SentimentTip x={clampTip((x(hover) / W) * 100)} p={points[hover]} />}
     </ChartCard>
   );
 }
@@ -182,14 +182,14 @@ function BantChart({ points, enabled, setEnabled, currentId }: {
           </g>;
         })}
       </svg>
-      {hover != null && points[hover] && <BantTip x={(x(hover) / W) * 100} p={points[hover]} enabled={enabled} single={single} />}
+      {hover != null && points[hover] && <BantTip x={clampTip((x(hover) / W) * 100)} p={points[hover]} enabled={enabled} single={single} />}
     </ChartCard>
   );
 }
 
 function BantTip({ x, p, enabled, single }: { x: number; p: Point; enabled: Record<string, boolean>; single: string | null }) {
   return (
-    <div style={{ ...tipBox, top: 40, left: `${x}%`, maxWidth: 320 }}>
+    <div style={{ ...tipBox, top: 40, left: `${x}%` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>{p.title}</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-disable)" }}>{p.dateLabel}</span>
@@ -288,7 +288,10 @@ const msg: React.CSSProperties = { color: "var(--text-disable)", fontSize: 13, f
 const pill: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 99, padding: "3px 9px" };
 const pillSm: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 99, padding: "2px 7px", flexShrink: 0 };
 const stageTag: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", color: "var(--text-secondary)", background: "var(--surface-C)", borderRadius: 99, padding: "3px 9px", flexShrink: 0 };
-const tipBox: React.CSSProperties = { position: "absolute", top: 6, transform: "translateX(-50%)", background: "var(--surface-A)", border: "1px solid var(--border-weak)", borderRadius: 10, padding: "9px 12px", boxShadow: "0 6px 24px rgba(0,0,0,0.16)", pointerEvents: "none", maxWidth: 300, minWidth: 190, zIndex: 5 };
+const tipBox: React.CSSProperties = { position: "absolute", top: 6, transform: "translateX(-50%)", background: "var(--surface-A)", border: "1px solid var(--border-weak)", borderRadius: 10, padding: "10px 14px", boxShadow: "0 6px 24px rgba(0,0,0,0.16)", pointerEvents: "none", width: 320, zIndex: 5 };
+// Clamp the tooltip's anchor so a fixed-width (320px) box never clips the
+// chart edges — points near the rim get pushed toward the centre instead.
+function clampTip(pct: number): number { return Math.min(83, Math.max(17, pct)); }
 function Label({ children }: { children: React.ReactNode }) {
   return <p style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", margin: 0 }}>{children}</p>;
 }
