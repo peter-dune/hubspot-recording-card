@@ -138,8 +138,8 @@ const RecordingCard = () => {
         onClick={() =>
           actions.openIframeModal({
             uri: playerUrl,
-            height: 800,
-            width: 1400,
+            height: 1040,
+            width: 1680,
             title: [title, date].filter(Boolean).join("  ·  ") || "Call Recording",
           })
         }
