@@ -17,7 +17,6 @@ export default function DealInsights({ recordId, title, metadata }: {
 }) {
   const [points, setPoints] = useState<Point[] | null>(null);
   const [dealName, setDealName] = useState("");
-  const [hover, setHover] = useState<number | null>(null);
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     Object.fromEntries(DIM_META.map(d => [d.key, d.key === "budget"])) // Budget on by default
   );
@@ -48,9 +47,9 @@ export default function DealInsights({ recordId, title, metadata }: {
           {!points ? <p style={msg}>Loading deal timeline…</p>
             : points.length === 0 ? <p style={msg}>No processed calls on this deal yet.</p>
             : <>
-                <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
-                <BantChart points={points} enabled={enabled} setEnabled={setEnabled} hover={hover} setHover={setHover} currentId={recordId} />
-                <Ledger points={points} hover={hover} setHover={setHover} currentId={recordId} />
+                <SentimentChart points={points} currentId={recordId} />
+                <BantChart points={points} enabled={enabled} setEnabled={setEnabled} currentId={recordId} />
+                <Ledger points={points} currentId={recordId} />
               </>}
         </div>
       </div>
@@ -60,7 +59,8 @@ export default function DealInsights({ recordId, title, metadata }: {
 
 // ─── Sentiment over time (pastel green) ──────────────────────────────────────
 const PASTEL = "#7bc9a6";
-function SentimentChart({ points, hover, setHover, currentId }: { points: Point[]; hover: number | null; setHover: (i: number | null) => void; currentId: string | null }) {
+function SentimentChart({ points, currentId }: { points: Point[]; currentId: string | null }) {
+  const [hover, setHover] = useState<number | null>(null);
   const W = 1040, H = 250, padX = 52, padY = 44; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
   const SY: Record<string, number> = { positive: 1, neutral: 0, "at-risk": -1 };
   const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
@@ -118,10 +118,11 @@ function SentimentTip({ x, p }: { x: number; p: Point }) {
 }
 
 // ─── BANT + Fit over time ────────────────────────────────────────────────────
-function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: {
+function BantChart({ points, enabled, setEnabled, currentId }: {
   points: Point[]; enabled: Record<string, boolean>; setEnabled: (e: Record<string, boolean>) => void;
-  hover: number | null; setHover: (i: number | null) => void; currentId: string | null;
+  currentId: string | null;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
   const W = 1040, H = 300, padX = 42, padY = 34; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
   const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
   const y = (v: number) => padY + plotH * (1 - v / 20);
@@ -164,8 +165,9 @@ function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: 
         {/* points: every call for every enabled dim (non-applicable = hollow baseline so each day shows) */}
         {DIM_META.filter(d => enabled[d.key]).map(d => points.map((p, i) => {
           const dd = p.dimensions?.[d.key];
-          if (!dd) return null;
-          if (!dd.applicable) return <circle key={d.key + p.id} cx={x(i)} cy={baseline} r={2.5} fill="none" stroke="var(--border-strong)" strokeWidth={1} opacity={0.5} />;
+          // No data for this dim on this call (or the whole call is insufficient)
+          // → a faint hollow baseline marker so every date still has a point.
+          if (!dd || !dd.applicable) return <circle key={d.key + p.id} cx={x(i)} cy={baseline} r={2.5} fill="none" stroke="var(--border-strong)" strokeWidth={1} opacity={0.5} />;
           return <circle key={d.key + p.id} cx={x(i)} cy={y(dd.score)} r={hover === i ? 5.5 : 4} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5} />;
         }))}
         {points.map((p, i) => {
@@ -210,7 +212,8 @@ function BantTip({ x, p, enabled, single }: { x: number; p: Point; enabled: Reco
   );
 }
 
-function Ledger({ points, hover, setHover, currentId }: { points: Point[]; hover: number | null; setHover: (i: number | null) => void; currentId: string | null }) {
+function Ledger({ points, currentId }: { points: Point[]; currentId: string | null }) {
+  const [hover, setHover] = useState<number | null>(null);
   return (
     <div>
       <Label>Calls on this deal ({points.length})</Label>
@@ -238,21 +241,36 @@ function sentimentSummary(points: Point[]): string {
   const c = { positive: 0, neutral: 0, "at-risk": 0 } as Record<string, number>;
   known.forEach(p => { c[p.sentiment] = (c[p.sentiment] || 0) + 1; });
   const first = known[0].sentiment, last = known[known.length - 1].sentiment;
-  const arc = first === last ? `${SENT_LABEL[last]} throughout` : `${SENT_LABEL[first]} → ${SENT_LABEL[last]}`;
-  return `${known.length} scored call${known.length > 1 ? "s" : ""} · ${arc}${c["at-risk"] ? ` · ${c["at-risk"]} at-risk` : ""}`;
+  const span = `across ${known.length === 1 ? "the one scored call" : `all ${known.length} calls`}`;
+  if (c["at-risk"] === 0 && c.neutral === 0) return `The customer has stayed engaged and positive ${span} — momentum is holding.`;
+  if (first === last && last === "positive") return `Positive ${span}, with a dip in between — overall still trending well.`;
+  if (last === "at-risk") return `Sentiment has slipped to at-risk by the latest call — worth a close look before the next step.`;
+  if (first !== last) return `Sentiment moved from ${SENT_LABEL[first].toLowerCase()} to ${SENT_LABEL[last].toLowerCase()} over the deal — the trajectory is the story here.`;
+  return `Sentiment has been steady (${SENT_LABEL[last].toLowerCase()}) ${span}.`;
 }
 function bantSummary(points: Point[]): string {
-  const parts: string[] = [];
+  const strong: string[] = [], rising: string[] = [], falling: string[] = [], missing: string[] = [];
   for (const d of DIM_META) {
     const vals = points.map(p => p.dimensions?.[d.key]).filter(x => x && x.applicable) as { score: number }[];
-    if (vals.length === 0) { if (d.key === "budget") parts.push("Budget not yet engaged"); continue; }
-    if (vals.length === 1) { parts.push(`${d.label} ${vals[0].score}`); continue; }
-    const delta = vals[vals.length - 1].score - vals[0].score;
-    const dir = delta > 2 ? "rising ↑" : delta < -2 ? "falling ↓" : "steady";
-    parts.push(`${d.label} ${dir}`);
+    if (vals.length === 0) { missing.push(d.label.toLowerCase()); continue; }
+    const latest = vals[vals.length - 1].score;
+    if (vals.length >= 2) {
+      const delta = latest - vals[0].score;
+      if (delta > 2) rising.push(d.label.toLowerCase());
+      else if (delta < -2) falling.push(d.label.toLowerCase());
+    }
+    if (latest >= 14) strong.push(d.label.toLowerCase());
   }
-  return parts.join(" · ");
+  const clauses: string[] = [];
+  if (strong.length) clauses.push(`${list(strong)} ${strong.length > 1 ? "are" : "is"} the strength${strong.length > 1 ? "s" : ""}`);
+  if (rising.length) clauses.push(`${list(rising)} building`);
+  if (falling.length) clauses.push(`${list(falling)} slipping`);
+  if (missing.length) clauses.push(`${list(missing)} not yet established`);
+  if (clauses.length === 0) return "Not enough scored calls yet to read a trend.";
+  return cap(clauses.join("; ")) + ".";
 }
+function list(a: string[]): string { return a.length <= 1 ? (a[0] || "") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]; }
+function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ─── small shared UI ─────────────────────────────────────────────────────────
 const msg: React.CSSProperties = { color: "var(--text-disable)", fontSize: 13, fontFamily: "var(--font-mono)", padding: "20px 4px" };

@@ -60,10 +60,14 @@ export function pointFromMetadata(m: Record<string, string | undefined>, title: 
 }
 
 // ─── DimBar: a BANT dimension with an evidence tooltip on hover ──────────────
-export function DimBar({ label, d, color }: { label: string; d?: Dim; color: string }) {
+// Bar + number are a traffic light on the SCORE (red<8, amber 8-13, green≥14) —
+// so a low score never shows a "healthy" colored bar. The dimension's own
+// brand colour lives on the over-time chart (identity), not here (quality).
+export function DimBar({ label, d }: { label: string; d?: Dim; color?: string }) {
   const [hover, setHover] = useState(false);
   if (!d) return null;
   const pct = d.applicable ? (d.score / 20) * 100 : 0;
+  const sc = d.applicable ? dimColor(d.score) : "var(--text-disable)";
   const hasEvidence = d.evidence && d.evidence.length > 0;
   return (
     <div style={{ position: "relative" }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
@@ -71,16 +75,16 @@ export function DimBar({ label, d, color }: { label: string; d?: Dim; color: str
         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", cursor: hasEvidence ? "help" : "default" }}>
           {label}{hasEvidence ? <span style={{ color: "var(--text-disable)", fontWeight: 400 }}> · {d.evidence.length} quote{d.evidence.length > 1 ? "s" : ""}</span> : ""}
         </span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: d.applicable ? dimColor(d.score) : "var(--text-disable)" }}>{d.applicable ? `${d.score}/20` : "n/a yet"}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: sc }}>{d.applicable ? `${d.score}/20` : "n/a yet"}</span>
       </div>
       <div style={{ height: 6, borderRadius: 99, background: "var(--surface-C)", overflow: "hidden" }}>
-        <div style={{ height: 6, width: `${pct}%`, borderRadius: 99, background: d.applicable ? color : "transparent", transition: "width 300ms" }} />
+        <div style={{ height: 6, width: `${pct}%`, borderRadius: 99, background: d.applicable ? sc : "transparent", transition: "width 300ms" }} />
       </div>
       {d.note && <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>{d.note}</p>}
       {hover && hasEvidence && (
-        <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, zIndex: 10, background: "var(--surface-A)", border: `1px solid ${color}`, borderRadius: 10, padding: "10px 12px", boxShadow: "0 8px 28px rgba(0,0,0,0.18)", width: "100%", maxWidth: 520 }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color, marginBottom: 6 }}>{label} — evidence</div>
-          {d.evidence.map((q, i) => <div key={i} style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5, marginBottom: 5, paddingLeft: 10, borderLeft: `2px solid ${color}` }}>“{q}”</div>)}
+        <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, zIndex: 10, background: "var(--surface-A)", border: `1px solid ${sc}`, borderRadius: 10, padding: "10px 12px", boxShadow: "0 8px 28px rgba(0,0,0,0.18)", width: "100%", maxWidth: 520 }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: sc, marginBottom: 6 }}>{label} — evidence</div>
+          {d.evidence.map((q, i) => <div key={i} style={{ fontSize: 12.5, color: "var(--text-primary)", lineHeight: 1.5, marginBottom: 5, paddingLeft: 10, borderLeft: `2px solid ${sc}` }}>“{q}”</div>)}
         </div>
       )}
     </div>
