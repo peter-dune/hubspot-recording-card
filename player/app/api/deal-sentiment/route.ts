@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      properties: ["call_title", "call_name", "call_date", "call_sentiment", "call_stage", "call_score"],
+      properties: ["call_title", "call_name", "call_date", "call_sentiment", "call_stage", "call_score", "recording_url"],
       inputs: recIds.map(id => ({ id })),
     }),
   });
@@ -93,8 +93,11 @@ export async function GET(req: NextRequest) {
       }
     } catch {}
     const dateMs = parseDateMs(p.call_date);
+    // engagementId lets the client jump straight to this call's player view
+    const engMatch = (p.recording_url || "").match(/\/engagement\/(\d+)/);
     return {
       id: r.id,
+      engagementId: engMatch ? engMatch[1] : null,
       title: p.call_title || p.call_name || "Call",
       dateMs,
       dateLabel: dateLabel(dateMs),

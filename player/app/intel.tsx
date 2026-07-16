@@ -5,7 +5,7 @@ import { useState } from "react";
 
 export interface Dim { score: number; applicable: boolean; note: string; evidence: string[] }
 export interface Point {
-  id: string; title: string; dateMs: number; dateLabel: string;
+  id: string; engagementId?: string | null; title: string; dateMs: number; dateLabel: string;
   sentiment: "positive" | "neutral" | "at-risk" | "unknown";
   reason: string; confidence: string; posEvidence: string[]; negEvidence: string[];
   stage: string; score: number | null; rationale: string;

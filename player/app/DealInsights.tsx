@@ -214,21 +214,30 @@ function BantTip({ x, p, enabled, single }: { x: number; p: Point; enabled: Reco
 
 function Ledger({ points, currentId }: { points: Point[]; currentId: string | null }) {
   const [hover, setHover] = useState<number | null>(null);
+  const jump = (p: Point) => {
+    if (p.id === currentId || !p.engagementId) return;
+    const qs = new URLSearchParams({ engagementId: p.engagementId, recordId: p.id });
+    window.location.href = `/?${qs.toString()}`; // reload the modal on the other call
+  };
   return (
     <div>
       <Label>Calls on this deal ({points.length})</Label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-        {points.map((p, i) => (
-          <div key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
-            style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, background: hover === i ? "var(--surface-C)" : (p.id === currentId ? "color-mix(in srgb,var(--accent) 7%,var(--surface-B))" : "var(--surface-B)"), border: `1px solid ${p.id === currentId ? "var(--accent)" : "var(--border-weaker)"}`, transition: "background 120ms" }}>
+        {points.map((p, i) => {
+          const clickable = p.id !== currentId && !!p.engagementId;
+          return (
+          <div key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => jump(p)}
+            title={clickable ? "Open this call" : undefined}
+            style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, cursor: clickable ? "pointer" : "default", background: hover === i ? "var(--surface-C)" : (p.id === currentId ? "color-mix(in srgb,var(--accent) 7%,var(--surface-B))" : "var(--surface-B)"), border: `1px solid ${p.id === currentId ? "var(--accent)" : hover === i && clickable ? "var(--border-strong)" : "var(--border-weaker)"}`, transition: "background 120ms,border-color 120ms" }}>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: SENT_COLOR[p.sentiment], flexShrink: 0 }} />
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-disable)", width: 52, flexShrink: 0 }}>{p.dateLabel || "—"}</span>
             <span style={{ fontSize: 13, color: "var(--text-primary)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
             {p.id === currentId && <span style={pillSm}>This call</span>}
             {p.stage && <span style={stageTag}>{p.stage}</span>}
             {p.score != null && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: scoreColor(p.score), width: 30, textAlign: "right", flexShrink: 0 }}>{p.score}</span>}
+            <span style={{ fontSize: 13, color: clickable ? "var(--text-secondary)" : "transparent", flexShrink: 0, opacity: hover === i ? 1 : 0.45, transition: "opacity 120ms" }}>↗</span>
           </div>
-        ))}
+        );})}
       </div>
     </div>
   );
