@@ -14,7 +14,7 @@ interface Point {
   sentiment: "positive" | "neutral" | "at-risk" | "unknown";
   reason: string; stage: string; score: number | null;
 }
-type Dim = { score: number; applicable: boolean; note: string };
+type Dim = { score: number; applicable: boolean; note: string; evidence?: string };
 
 const SENT_COLOR: Record<string, string> = {
   positive: "#1d9e75", neutral: "#b0873d", "at-risk": "#e04b4a", unknown: "#9a9a9a",
@@ -23,10 +23,23 @@ const SENT_LABEL: Record<string, string> = {
   positive: "Positive", neutral: "Neutral", "at-risk": "At-risk", unknown: "—",
 };
 const SENT_ICON: Record<string, string> = { positive: "🌱", neutral: "🌤️", "at-risk": "🌧️", unknown: "" };
-const BANT: [string, string][] = [
-  ["budget", "Budget"], ["authority", "Authority"], ["need", "Need"],
-  ["timeline", "Timeline"], ["fit_usage", "Fit / Usage"],
+const BANT4: [string, string][] = [
+  ["budget", "Budget"], ["authority", "Authority"], ["need", "Need"], ["timeline", "Timeline"],
 ];
+
+/** Catmull-Rom → cubic-bezier smoothing for a soft, curved line. */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
 
 function scoreColor(s: number) { return s >= 70 ? "#1d9e75" : s >= 55 ? "#639922" : s >= 40 ? "#b0873d" : "#e04b4a"; }
 function dimColor(s: number) { return s >= 14 ? "#1d9e75" : s >= 8 ? "#b0873d" : "#e04b4a"; }
@@ -95,27 +108,22 @@ export default function DealInsights({ recordId, title, metadata, signals }: {
         {/* BANT breakdown */}
         {dims && (
           <Card>
-            <Label>Qualification breakdown</Label>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:10}}>
-              {BANT.map(([key,label])=>{
-                const d = dims[key]; if(!d) return null;
-                const pct = d.applicable ? (d.score/20)*100 : 0;
-                return (
-                  <div key={key}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
-                      <span style={{fontSize:13,fontWeight:600,color:"var(--text-primary)"}}>{label}</span>
-                      <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:d.applicable?dimColor(d.score):"var(--text-disable)"}}>
-                        {d.applicable?`${d.score}/20`:"n/a yet"}
-                      </span>
-                    </div>
-                    <div style={{height:6,borderRadius:99,background:"var(--surface-C)",overflow:"hidden"}}>
-                      <div style={{height:6,width:`${pct}%`,borderRadius:99,background:d.applicable?dimColor(d.score):"transparent",transition:"width 300ms"}}/>
-                    </div>
-                    {d.note && <p style={{margin:"4px 0 0",fontSize:11.5,color:"var(--text-disable)",lineHeight:1.4}}>{d.note}</p>}
-                  </div>
-                );
-              })}
+            <Label>Qualification breakdown · BANT</Label>
+            <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:10}}>
+              {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
             </div>
+
+            {/* Dune-specific Fit / Usage, separated */}
+            {dims.fit_usage && (
+              <>
+                <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
+                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                  <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
+                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                </div>
+                <DimRow label="Fit / Usage" d={dims.fit_usage} />
+              </>
+            )}
           </Card>
         )}
 
@@ -155,14 +163,24 @@ function SentimentChart({ points, hover, setHover, currentId }: { points: Point[
   const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
   const y=(s:string)=>padY+plotH*(1-((SY[s]??0)+1)/2);
   const known=points.map((p,i)=>({p,i})).filter(o=>o.p.sentiment!=="unknown");
-  const path=known.map((o,k)=>`${k===0?"M":"L"} ${x(o.i)} ${y(o.p.sentiment)}`).join(" ");
+  const coords=known.map(o=>({x:x(o.i),y:y(o.p.sentiment)}));
+  const line=smoothPath(coords);
+  const baseline=padY+plotH;
+  const area=coords.length>1 ? `${line} L ${coords[coords.length-1].x} ${baseline} L ${coords[0].x} ${baseline} Z` : "";
   const rows=[["positive","Positive"],["neutral","Neutral"],["at-risk","At-risk"]];
   return (
     <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px",marginTop:8}}>
       <p style={{fontFamily:"var(--font-mono)",fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--text-disable)",margin:"0 0 2px 8px"}}>Sentiment over time</p>
       <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
+        <defs>
+          <linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22"/>
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0"/>
+          </linearGradient>
+        </defs>
         {rows.map(([s,l])=>(<g key={s}><line x1={padX} x2={W-padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s==="neutral"?"0":"3 4"} strokeWidth={1}/><text x={8} y={y(s)+4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>))}
-        {path&&<path d={path} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
+        {area&&<path d={area} fill="url(#sentFill)" stroke="none"/>}
+        {line&&<path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
         {points.map((p,i)=>(
           <g key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
             <circle cx={x(i)} cy={y(p.sentiment)} r={hover===i?8:p.id===currentId?7:5.5} fill={SENT_COLOR[p.sentiment]} stroke={p.id===currentId?"var(--accent)":"var(--surface-A)"} strokeWidth={p.id===currentId?3:2.5}/>
@@ -182,6 +200,26 @@ function SentimentChart({ points, hover, setHover, currentId }: { points: Point[
           {points[hover].reason&&<div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{points[hover].reason}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+function DimRow({ label, d }: { label: string; d?: Dim }) {
+  if (!d) return null;
+  const pct = d.applicable ? (d.score/20)*100 : 0;
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
+        <span style={{fontSize:13,fontWeight:600,color:"var(--text-primary)"}}>{label}</span>
+        <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:d.applicable?dimColor(d.score):"var(--text-disable)"}}>
+          {d.applicable?`${d.score}/20`:"n/a yet"}
+        </span>
+      </div>
+      <div style={{height:6,borderRadius:99,background:"var(--surface-C)",overflow:"hidden"}}>
+        <div style={{height:6,width:`${pct}%`,borderRadius:99,background:d.applicable?dimColor(d.score):"transparent",transition:"width 300ms"}}/>
+      </div>
+      {d.note && <p style={{margin:"6px 0 0",fontSize:12,color:"var(--text-secondary)",lineHeight:1.4}}>{d.note}</p>}
+      {d.evidence && <p style={{margin:"3px 0 0",fontSize:12,color:"var(--text-disable)",lineHeight:1.45,fontStyle:"italic"}}>“{d.evidence}”</p>}
     </div>
   );
 }
