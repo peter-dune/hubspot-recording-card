@@ -37,15 +37,23 @@ export default function FirstDemo({ recordId, title, metadata }: {
   if (!show) return <Msg>No processed calls found for this deal or account yet.</Msg>;
 
   const isTagged = /first demo/i.test(show.stage);
-  const note = !isTagged
-    ? (points.length === 0
-        ? "This call isn't linked to a deal or account timeline — showing this call's own intelligence."
-        : `No call on this ${scope === "company" ? "account" : "deal"} is tagged “First demo” — the first demo likely predates call recording. Showing the earliest scored call (${show.stage || "unknown stage"}).`)
-    : null;
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "22px 26px 36px" }}>
       <div style={{ maxWidth: 1120, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* LOUD banner when there is no real first demo on record */}
+        {!isTagged && (
+          <div style={{ textAlign: "center", border: "2px dashed var(--border-strong)", borderRadius: 16, padding: "26px 30px" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+            <h3 style={{ margin: "0 0 6px", fontSize: 17, color: "var(--text-primary)" }}>No first demo recorded on this {scope === "company" ? "account" : "deal"}</h3>
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+              {points.length === 0
+                ? "This call isn't linked to a deal or account timeline, so there's no history to search."
+                : "The first demo most likely predates call recording (or wasn't recorded)."}
+              {" "}Showing the earliest available intelligence below instead.
+            </p>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", color: isTagged ? "#fff" : "var(--text-secondary)", background: isTagged ? "#f4603e" : "var(--surface-C)", borderRadius: 99, padding: "4px 11px" }}>
             {isTagged ? "★ FIRST DEMO" : "EARLIEST CALL"}
@@ -53,11 +61,6 @@ export default function FirstDemo({ recordId, title, metadata }: {
           <h2 style={{ margin: 0, fontSize: 21, fontWeight: 600, color: "var(--text-primary)" }}>{show.title}</h2>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-disable)" }}>{show.dateLabel}{dealName ? ` · ${dealName}` : ""}</span>
         </div>
-        {note && (
-          <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 10, padding: "10px 14px", lineHeight: 1.5 }}>
-            {note}
-          </div>
-        )}
         <CallCard point={show} />
       </div>
     </div>

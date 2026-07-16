@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      properties: ["call_title", "call_name", "call_date", "call_sentiment", "call_stage", "call_score", "recording_url"],
+      properties: ["call_title", "call_name", "call_date", "call_sentiment", "call_stage", "call_score", "call_trial", "recording_url"],
       inputs: recIds.map(id => ({ id })),
     }),
   });
@@ -108,10 +108,13 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch {}
+    let trial: unknown = null;
+    try { const t = JSON.parse(p.call_trial || ""); if (t && typeof t.health === "number") trial = t; } catch {}
     const dateMs = parseDateMs(p.call_date);
     // engagementId lets the client jump straight to this call's player view
     const engMatch = (p.recording_url || "").match(/\/engagement\/(\d+)/);
     return {
+      trial,
       id: r.id,
       engagementId: engMatch ? engMatch[1] : null,
       title: p.call_title || p.call_name || "Call",
