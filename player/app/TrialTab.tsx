@@ -13,11 +13,24 @@
 import { useEffect, useState } from "react";
 import { DimBar, Point, Dim, SENT_COLOR, scoreColor } from "./intel";
 
+interface Win { what: string; who: string; quote: string }
+interface Friction { what: string; type: string; severity: string; owner: string; status: string; who: string; quote: string }
+interface Ask { what: string; who: string }
 interface Trial {
   health: number; verdict: string; blockers: string[]; next_actions: string[];
   dimensions: Record<string, Dim>;
+  session_summary?: string; use_cases_tested?: string[];
+  wins?: Win[]; friction?: Friction[]; asks?: Ask[];
+  goal?: string; goal_progress?: string;
 }
 type TPoint = Point & { trial?: Trial | null };
+
+const FRICTION_LABEL: Record<string, string> = {
+  missing_data: "Missing data", data_quality: "Data quality", performance: "Performance",
+  usability: "Usability", docs: "Docs", pricing: "Pricing", integration: "Integration", other: "Other",
+};
+const SEV_ORDER: Record<string, number> = { blocker: 0, major: 1, minor: 2 };
+const SEV_COLOR: Record<string, string> = { blocker: "#e04b4a", major: "#ba7517", minor: "#9a9a9a" };
 
 const TRIAL_DIMS: { key: string; label: string }[] = [
   { key: "activation", label: "Activation" },
@@ -97,6 +110,73 @@ export default function TrialTab({ recordId }: { recordId: string | null }) {
             </p>
           )}
         </Card>
+
+        {/* ── State of the trial + Working / Not working / Asks ── */}
+        {latest && latest.trial && (
+          <>
+            <Card>
+              <Lbl>State of the trial · as of {latest.dateLabel}</Lbl>
+              {latest.trial.session_summary && <p style={{ margin: "10px 0 0", fontSize: 13.5, lineHeight: 1.6, color: "var(--text-primary)" }}>{latest.trial.session_summary}</p>}
+              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 12 }}>
+                {latest.trial.goal && (
+                  <div style={{ flex: "1 1 300px" }}>
+                    <div style={statLbl}>Trial goal ({latest.trial.goal_progress || "unclear"})</div>
+                    <p style={{ margin: "4px 0 0", fontSize: 12.5, lineHeight: 1.5, color: goalColor(latest.trial.goal_progress), fontStyle: "italic" }}>“{latest.trial.goal}”</p>
+                  </div>
+                )}
+                {(latest.trial.use_cases_tested?.length ?? 0) > 0 && (
+                  <div style={{ flex: "1 1 300px" }}>
+                    <div style={statLbl}>Use cases in play</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      {latest.trial.use_cases_tested!.map((u, i) => <span key={i} style={chip}>{u}</span>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 16 }}>
+              {/* What's working */}
+              <Card>
+                <Lbl>✅ What&apos;s working</Lbl>
+                {allWins(trialCalls).length === 0
+                  ? <p style={li}>Nothing validated yet — that itself is a signal.</p>
+                  : allWins(trialCalls).map((w, i) => (
+                    <div key={i} style={{ marginTop: 10 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.4 }}>{w.what}</p>
+                      {w.quote && <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "#1d9e75", lineHeight: 1.45, fontStyle: "italic" }}>“{w.quote}”{w.who ? ` — ${w.who}` : ""}</p>}
+                    </div>
+                  ))}
+              </Card>
+              {/* What's not */}
+              <Card>
+                <Lbl>⚠️ What&apos;s not working</Lbl>
+                {allFriction(trialCalls).length === 0
+                  ? <p style={li}>No friction surfaced 🎉</p>
+                  : allFriction(trialCalls).map((f, i) => (
+                    <div key={i} style={{ marginTop: 10, opacity: f.status === "resolved" ? 0.55 : 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ ...chip, color: SEV_COLOR[f.severity], borderColor: SEV_COLOR[f.severity] }}>{f.severity}</span>
+                        <span style={chip}>{FRICTION_LABEL[f.type] || f.type}</span>
+                        {f.owner === "dune" && <span style={{ ...chip, color: "#f4603e", borderColor: "#f4603e" }}>Dune to fix</span>}
+                        {f.status === "recurring" && <span style={{ ...chip, color: "#e04b4a", borderColor: "#e04b4a", fontWeight: 700 }}>RECURRING</span>}
+                        {f.status === "resolved" && <span style={chip}>resolved ✓</span>}
+                      </div>
+                      <p style={{ margin: "5px 0 0", fontSize: 13, fontWeight: 600, color: "var(--text-primary)", lineHeight: 1.4, textDecoration: f.status === "resolved" ? "line-through" : "none" }}>{f.what}</p>
+                      {f.quote && <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.45, fontStyle: "italic" }}>“{f.quote}”{f.who ? ` — ${f.who}` : ""}</p>}
+                    </div>
+                  ))}
+              </Card>
+            </div>
+
+            {allAsks(trialCalls).length > 0 && (
+              <Card>
+                <Lbl>📋 Outstanding asks — what Dune owes</Lbl>
+                {allAsks(trialCalls).map((a, i) => <p key={i} style={li}>→ {a.what}{a.who ? ` (asked by ${a.who})` : ""}</p>)}
+              </Card>
+            )}
+          </>
+        )}
 
         {/* ── Trial Scorecard (latest) ── */}
         {latest && latest.trial ? (
@@ -179,6 +259,34 @@ function computeImpact(all: TPoint[], trialCalls: TPoint[]) {
   return { scoreBefore, scoreAfter, fitBefore, fitAfter, lastSentiment, sentimentArc, read };
 }
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ── aggregate wins/friction/asks across the trial's calls (latest first, deduped) ──
+function dedupe<T>(items: T[], key: (t: T) => string): T[] {
+  const seen = new Set<string>(); const out: T[] = [];
+  for (const it of items) {
+    const k = key(it).toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 60);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(it);
+  }
+  return out;
+}
+function allWins(calls: TPoint[]): Win[] {
+  const w = [...calls].reverse().flatMap(p => p.trial?.wins ?? []);
+  return dedupe(w, x => x.what).slice(0, 8);
+}
+function allFriction(calls: TPoint[]): Friction[] {
+  const f = [...calls].reverse().flatMap(p => p.trial?.friction ?? []);
+  // Latest mention of a duplicate wins (so a later "resolved" supersedes earlier "new")
+  return dedupe(f, x => x.what)
+    .sort((a, b) => (a.status === "resolved" ? 1 : 0) - (b.status === "resolved" ? 1 : 0) || SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
+    .slice(0, 10);
+}
+function allAsks(calls: TPoint[]): Ask[] {
+  return dedupe([...calls].reverse().flatMap(p => p.trial?.asks ?? []), x => x.what).slice(0, 8);
+}
+function goalColor(p?: string) { return p === "on-track" ? "#1d9e75" : p === "behind" ? "#e04b4a" : "var(--text-secondary)"; }
+
+const chip: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.03em", color: "var(--text-secondary)", border: "1px solid var(--border-weak)", borderRadius: 99, padding: "2px 8px" };
 function verdictColor(v: string) {
   return /on track/i.test(v) ? "#1d9e75" : /progress/i.test(v) ? "#639922" : /stall/i.test(v) ? "#b0873d" : /risk/i.test(v) ? "#e04b4a" : "var(--text-secondary)";
 }
