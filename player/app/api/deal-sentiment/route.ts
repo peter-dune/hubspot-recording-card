@@ -70,8 +70,18 @@ export async function GET(req: NextRequest) {
       if (s.sentiment) { sentiment = s.sentiment; reason = s.reason || ""; }
     } catch {}
     let score: number | null = null;
-    try { const sc = JSON.parse(p.call_score || "{}"); if (typeof sc.score === "number") score = sc.score; } catch {}
-    const dateMs = Number(p.call_date) || 0;
+    let dimensions: Record<string, { score: number; applicable: boolean }> = {};
+    try {
+      const sc = JSON.parse(p.call_score || "{}");
+      if (typeof sc.score === "number") score = sc.score;
+      if (sc.dimensions) {
+        for (const k of ["budget", "authority", "need", "timeline", "fit_usage"]) {
+          const d = sc.dimensions[k];
+          if (d) dimensions[k] = { score: Number(d.score) || 0, applicable: d.applicable !== false };
+        }
+      }
+    } catch {}
+    const dateMs = parseDateMs(p.call_date);
     return {
       id: r.id,
       title: p.call_title || p.call_name || "Call",
@@ -81,6 +91,7 @@ export async function GET(req: NextRequest) {
       reason,
       stage: p.call_stage || "",
       score,
+      dimensions,
     };
   }).sort((a: { dateMs: number }, b: { dateMs: number }) => a.dateMs - b.dateMs);
 

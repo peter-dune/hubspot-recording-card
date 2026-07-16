@@ -1,56 +1,61 @@
 "use client";
 
 /**
- * Deal Insights tab — the full, pretty intelligence view for the modal:
- * call score (BANT + Dune Fit/Usage breakdown), sentiment, a First Demo flag,
- * then deal-level sentiment-over-time and a call ledger. Full design freedom
- * here (Vercel-hosted) vs the constrained native card.
+ * Deal Insights tab — the full intelligence view for the modal.
+ * Two columns on wide modals: left = this call's score + BANT/Fit breakdown +
+ * sentiment; right = deal trends (sentiment over time, BANT+Fit over time with
+ * per-metric toggles) + call ledger. Stage/category is surfaced in tooltips
+ * so you can see where deals fall off.
  */
 
 import { useEffect, useMemo, useState } from "react";
 
+type DimScores = Record<string, { score: number; applicable: boolean }>;
 interface Point {
   id: string; title: string; dateMs: number; dateLabel: string;
   sentiment: "positive" | "neutral" | "at-risk" | "unknown";
   reason: string; stage: string; score: number | null;
+  dimensions: DimScores;
 }
 type Dim = { score: number; applicable: boolean; note: string; evidence?: string };
 
-const SENT_COLOR: Record<string, string> = {
-  positive: "#1d9e75", neutral: "#b0873d", "at-risk": "#e04b4a", unknown: "#9a9a9a",
-};
-const SENT_LABEL: Record<string, string> = {
-  positive: "Positive", neutral: "Neutral", "at-risk": "At-risk", unknown: "—",
-};
+const SENT_COLOR: Record<string, string> = { positive: "#1d9e75", neutral: "#b0873d", "at-risk": "#e04b4a", unknown: "#9a9a9a" };
+const SENT_LABEL: Record<string, string> = { positive: "Positive", neutral: "Neutral", "at-risk": "At-risk", unknown: "—" };
 const SENT_ICON: Record<string, string> = { positive: "🌱", neutral: "🌤️", "at-risk": "🌧️", unknown: "" };
-const BANT4: [string, string][] = [
-  ["budget", "Budget"], ["authority", "Authority"], ["need", "Need"], ["timeline", "Timeline"],
+const BANT4: [string, string][] = [["budget","Budget"],["authority","Authority"],["need","Need"],["timeline","Timeline"]];
+
+// BANT+F line colours (used in the trajectory chart + toggles)
+const DIM_META: { key: string; label: string; color: string }[] = [
+  { key: "budget", label: "Budget", color: "#639922" },
+  { key: "authority", label: "Authority", color: "#378add" },
+  { key: "need", label: "Need", color: "#7f77dd" },
+  { key: "timeline", label: "Timeline", color: "#ba7517" },
+  { key: "fit_usage", label: "Fit / Usage", color: "#f4603e" },
 ];
 
-/** Catmull-Rom → cubic-bezier smoothing for a soft, curved line. */
 function smoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length === 0) return "";
   if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`;
+    const p0 = pts[i-1]||pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2]||p2;
+    d += ` C ${p1.x+(p2.x-p0.x)/6} ${p1.y+(p2.y-p0.y)/6} ${p2.x-(p3.x-p1.x)/6} ${p2.y-(p3.y-p1.y)/6} ${p2.x} ${p2.y}`;
   }
   return d;
 }
+function scoreColor(s: number) { return s>=70?"#1d9e75":s>=55?"#639922":s>=40?"#b0873d":"#e04b4a"; }
+function dimColor(s: number) { return s>=14?"#1d9e75":s>=8?"#b0873d":"#e04b4a"; }
 
-function scoreColor(s: number) { return s >= 70 ? "#1d9e75" : s >= 55 ? "#639922" : s >= 40 ? "#b0873d" : "#e04b4a"; }
-function dimColor(s: number) { return s >= 14 ? "#1d9e75" : s >= 8 ? "#b0873d" : "#e04b4a"; }
-
-export default function DealInsights({ recordId, title, metadata, signals }: {
+export default function DealInsights({ recordId, title, metadata }: {
   recordId: string | null; title: string;
   metadata: Record<string, string | undefined>; signals: unknown[];
 }) {
   const [points, setPoints] = useState<Point[] | null>(null);
   const [dealName, setDealName] = useState("");
   const [hover, setHover] = useState<number | null>(null);
+  const [enabled, setEnabled] = useState<Record<string, boolean>>(
+    Object.fromEntries(DIM_META.map(d => [d.key, true]))
+  );
 
   useEffect(() => {
     if (!recordId) return;
@@ -67,90 +72,89 @@ export default function DealInsights({ recordId, title, metadata, signals }: {
   const dims: Record<string, Dim> | undefined = score.dimensions;
 
   return (
-    <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"20px 22px 32px"}}>
-      <div style={{maxWidth:920,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",gap:16}}>
+    <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"22px 26px 36px"}}>
+      <div style={{maxWidth:1440,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",gap:18}}>
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <h2 style={{margin:0,fontSize:20,fontWeight:600,color:"var(--text-primary)"}}>{title}</h2>
+          <h2 style={{margin:0,fontSize:21,fontWeight:600,color:"var(--text-primary)"}}>{title}</h2>
           {isFirstDemo && <Badge text="★ FIRST DEMO" bg="#f4603e" fg="#fff" />}
           {stage && !isFirstDemo && <Badge text={stage.toUpperCase()} bg="var(--surface-C)" fg="var(--text-secondary)" />}
         </div>
 
-        {/* Score + sentiment row */}
-        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 240px",gap:14,alignItems:"stretch"}}>
-          {/* Score card */}
-          <Card>
-            <Label>Call score · {score.framework || "BANT"}</Label>
-            {typeof score.score === "number" ? (
-              <>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:2}}>
-                  <span style={{fontSize:38,fontWeight:700,color:scoreColor(score.score),lineHeight:1}}>{score.score}</span>
-                  <span style={{fontSize:14,color:"var(--text-disable)"}}>/ 100</span>
-                  {score.label && <span style={{fontSize:13,fontWeight:600,color:scoreColor(score.score)}}>{score.label}</span>}
-                </div>
-                {score.rationale && <p style={{margin:"10px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
-              </>
-            ) : <p style={{fontSize:13,color:"var(--text-disable)",marginTop:6}}>Not scored yet.</p>}
-          </Card>
+        {/* Two columns on wide modals */}
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1.15fr)",gap:18,alignItems:"start"}}>
 
-          {/* Sentiment card */}
-          <Card>
-            <Label>Sentiment</Label>
-            <div style={{fontSize:22,fontWeight:700,marginTop:4,color:SENT_COLOR[sentiment]}}>
-              {SENT_ICON[sentiment]} {SENT_LABEL[sentiment]}
-            </div>
-            {sent.reason && <p style={{margin:"8px 0 0",fontSize:12,lineHeight:1.45,color:"var(--text-secondary)"}}>{sent.reason}</p>}
-            {sent.confidence && <p style={{margin:"6px 0 0",fontSize:11,color:"var(--text-disable)"}}>Confidence: {sent.confidence}</p>}
-          </Card>
-        </div>
-
-        {/* BANT breakdown */}
-        {dims && (
-          <Card>
-            <Label>Qualification breakdown · BANT</Label>
-            <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:10}}>
-              {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
+          {/* LEFT — this call's intelligence */}
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 220px",gap:14}}>
+              <Card>
+                <Label>Call score · {score.framework || "BANT"}</Label>
+                {typeof score.score==="number" ? (
+                  <>
+                    <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:2}}>
+                      <span style={{fontSize:40,fontWeight:700,color:scoreColor(score.score),lineHeight:1}}>{score.score}</span>
+                      <span style={{fontSize:14,color:"var(--text-disable)"}}>/ 100</span>
+                      {score.label && <span style={{fontSize:13,fontWeight:600,color:scoreColor(score.score)}}>{score.label}</span>}
+                    </div>
+                    {score.rationale && <p style={{margin:"10px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
+                  </>
+                ) : <p style={{fontSize:13,color:"var(--text-disable)",marginTop:6}}>Not scored yet.</p>}
+              </Card>
+              <Card>
+                <Label>Sentiment</Label>
+                <div style={{fontSize:22,fontWeight:700,marginTop:4,color:SENT_COLOR[sentiment]}}>{SENT_ICON[sentiment]} {SENT_LABEL[sentiment]}</div>
+                {sent.reason && <p style={{margin:"8px 0 0",fontSize:12,lineHeight:1.45,color:"var(--text-secondary)"}}>{sent.reason}</p>}
+                {sent.confidence && <p style={{margin:"6px 0 0",fontSize:11,color:"var(--text-disable)"}}>Confidence: {sent.confidence}</p>}
+              </Card>
             </div>
 
-            {/* Dune-specific Fit / Usage, separated */}
-            {dims.fit_usage && (
-              <>
-                <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
-                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
-                  <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
-                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+            {dims && (
+              <Card>
+                <Label>Qualification breakdown · BANT</Label>
+                <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:10}}>
+                  {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
                 </div>
-                <DimRow label="Fit / Usage" d={dims.fit_usage} />
-              </>
+                {dims.fit_usage && (
+                  <>
+                    <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
+                      <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                      <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
+                      <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
+                    </div>
+                    <DimRow label="Fit / Usage" d={dims.fit_usage} />
+                  </>
+                )}
+              </Card>
             )}
-          </Card>
-        )}
+          </div>
 
-        {/* Deal sentiment over time */}
-        <div style={{marginTop:4}}>
-          <Label>Deal · {dealName || title}</Label>
-          {!points ? <p style={msg}>Loading deal timeline…</p>
-            : points.length === 0 ? <p style={msg}>No other processed calls on this deal yet.</p>
-            : <>
-                <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
-                <div style={{marginTop:16}}>
-                  <Label>Calls on this deal ({points.length})</Label>
-                  <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
-                    {points.map((p,i)=>(
-                      <div key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)}
-                        style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
-                          background:hover===i?"var(--surface-C)":"var(--surface-B)",border:`1px solid ${p.id===recordId?"var(--accent)":"var(--border-weaker)"}`,transition:"background 120ms"}}>
-                        <span style={{width:9,height:9,borderRadius:"50%",background:SENT_COLOR[p.sentiment],flexShrink:0}}/>
-                        <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-disable)",width:56,flexShrink:0}}>{p.dateLabel||"—"}</span>
-                        <span style={{fontSize:13,color:"var(--text-primary)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}{p.id===recordId?"  ·  this call":""}</span>
-                        {p.stage&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,textTransform:"uppercase",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"3px 9px",flexShrink:0}}>{p.stage}</span>}
-                        {p.score!=null&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:scoreColor(p.score),width:34,textAlign:"right",flexShrink:0}}>{p.score}</span>}
-                      </div>
-                    ))}
+          {/* RIGHT — deal trends */}
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <Label>Deal · {dealName || title}</Label>
+            {!points ? <p style={msg}>Loading deal timeline…</p>
+              : points.length===0 ? <p style={msg}>No processed calls on this deal yet.</p>
+              : <>
+                  <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
+                  <BantChart points={points} enabled={enabled} setEnabled={setEnabled} hover={hover} setHover={setHover} currentId={recordId} />
+                  <div>
+                    <Label>Calls on this deal ({points.length})</Label>
+                    <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+                      {points.map((p,i)=>(
+                        <div key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)}
+                          style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
+                            background:hover===i?"var(--surface-C)":"var(--surface-B)",border:`1px solid ${p.id===recordId?"var(--accent)":"var(--border-weaker)"}`,transition:"background 120ms"}}>
+                          <span style={{width:9,height:9,borderRadius:"50%",background:SENT_COLOR[p.sentiment],flexShrink:0}}/>
+                          <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-disable)",width:52,flexShrink:0}}>{p.dateLabel||"—"}</span>
+                          <span style={{fontSize:13,color:"var(--text-primary)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}{p.id===recordId?"  ·  this call":""}</span>
+                          {p.stage&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,textTransform:"uppercase",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"3px 9px",flexShrink:0}}>{p.stage}</span>}
+                          {p.score!=null&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:scoreColor(p.score),width:30,textAlign:"right",flexShrink:0}}>{p.score}</span>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </>}
+                </>}
+          </div>
         </div>
       </div>
     </div>
@@ -158,26 +162,20 @@ export default function DealInsights({ recordId, title, metadata, signals }: {
 }
 
 function SentimentChart({ points, hover, setHover, currentId }: { points: Point[]; hover: number|null; setHover:(i:number|null)=>void; currentId:string|null }) {
-  const W=880,H=210,padX=44,padY=34; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
+  const W=760,H=200,padX=44,padY=30; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
   const SY:Record<string,number>={positive:1,neutral:0,"at-risk":-1};
   const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
   const y=(s:string)=>padY+plotH*(1-((SY[s]??0)+1)/2);
   const known=points.map((p,i)=>({p,i})).filter(o=>o.p.sentiment!=="unknown");
   const coords=known.map(o=>({x:x(o.i),y:y(o.p.sentiment)}));
-  const line=smoothPath(coords);
-  const baseline=padY+plotH;
-  const area=coords.length>1 ? `${line} L ${coords[coords.length-1].x} ${baseline} L ${coords[0].x} ${baseline} Z` : "";
+  const line=smoothPath(coords); const baseline=padY+plotH;
+  const area=coords.length>1?`${line} L ${coords[coords.length-1].x} ${baseline} L ${coords[0].x} ${baseline} Z`:"";
   const rows=[["positive","Positive"],["neutral","Neutral"],["at-risk","At-risk"]];
   return (
-    <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px",marginTop:8}}>
-      <p style={{fontFamily:"var(--font-mono)",fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--text-disable)",margin:"0 0 2px 8px"}}>Sentiment over time</p>
+    <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px"}}>
+      <p style={chartTitle}>Sentiment over time</p>
       <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
-        <defs>
-          <linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22"/>
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0"/>
-          </linearGradient>
-        </defs>
+        <defs><linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22"/><stop offset="100%" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs>
         {rows.map(([s,l])=>(<g key={s}><line x1={padX} x2={W-padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s==="neutral"?"0":"3 4"} strokeWidth={1}/><text x={8} y={y(s)+4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>))}
         {area&&<path d={area} fill="url(#sentFill)" stroke="none"/>}
         {line&&<path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
@@ -185,21 +183,84 @@ function SentimentChart({ points, hover, setHover, currentId }: { points: Point[
           <g key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
             <circle cx={x(i)} cy={y(p.sentiment)} r={hover===i?8:p.id===currentId?7:5.5} fill={SENT_COLOR[p.sentiment]} stroke={p.id===currentId?"var(--accent)":"var(--surface-A)"} strokeWidth={p.id===currentId?3:2.5}/>
             <rect x={x(i)-16} y={0} width={32} height={H} fill="transparent"/>
-            <text x={x(i)} y={H-12} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
+            <text x={x(i)} y={H-10} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
           </g>
         ))}
       </svg>
       {hover!=null&&points[hover]&&(
-        <div style={{position:"absolute",left:`${(x(hover)/W)*100}%`,top:6,transform:"translateX(-50%)",background:"var(--surface-A)",border:"1px solid var(--border-weak)",borderRadius:10,padding:"9px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.14)",pointerEvents:"none",maxWidth:280,zIndex:5}}>
-          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
-            <span style={{width:8,height:8,borderRadius:"50%",background:SENT_COLOR[points[hover].sentiment]}}/>
-            <span style={{fontSize:12,fontWeight:600,color:SENT_COLOR[points[hover].sentiment]}}>{SENT_LABEL[points[hover].sentiment]}</span>
-            <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text-disable)"}}>{points[hover].dateLabel}</span>
-          </div>
-          <div style={{fontSize:12,color:"var(--text-primary)",lineHeight:1.4,marginBottom:points[hover].reason?3:0}}>{points[hover].title}</div>
-          {points[hover].reason&&<div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{points[hover].reason}</div>}
-        </div>
+        <Tooltip x={(x(hover)/W)*100} p={points[hover]} />
       )}
+    </div>
+  );
+}
+
+function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: {
+  points: Point[]; enabled: Record<string,boolean>; setEnabled:(e:Record<string,boolean>)=>void;
+  hover: number|null; setHover:(i:number|null)=>void; currentId:string|null;
+}) {
+  const W=760,H=230,padX=34,padY=24; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
+  const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
+  const y=(v:number)=>padY+plotH*(1-v/20);
+  return (
+    <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px"}}>
+      <p style={chartTitle}>BANT + Fit over time</p>
+      {/* toggles */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 6px 8px"}}>
+        {DIM_META.map(d=>(
+          <button key={d.key} onClick={()=>setEnabled({...enabled,[d.key]:!enabled[d.key]})}
+            style={{display:"inline-flex",alignItems:"center",gap:6,fontFamily:"var(--font-mono)",fontSize:10.5,letterSpacing:"0.02em",
+              textTransform:"uppercase",padding:"5px 10px",borderRadius:99,cursor:"pointer",transition:"all 140ms",
+              border:`1px solid ${enabled[d.key]?d.color:"var(--border-weaker)"}`,
+              background:enabled[d.key]?`color-mix(in srgb, ${d.color} 12%, transparent)`:"transparent",
+              color:enabled[d.key]?d.color:"var(--text-disable)"}}>
+            <span style={{width:8,height:8,borderRadius:2,background:enabled[d.key]?d.color:"var(--border-strong)"}}/>{d.label}
+          </button>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
+        {[0,5,10,15,20].map(v=>(<g key={v}><line x1={padX} x2={W-padX} y1={y(v)} y2={y(v)} stroke="var(--border-weaker)" strokeWidth={1}/><text x={8} y={y(v)+3} fontSize={9} fill="var(--text-disable)" fontFamily="var(--font-mono)">{v}</text></g>))}
+        {DIM_META.filter(d=>enabled[d.key]).map(d=>{
+          const coords=points.map((p,i)=>({p,i})).filter(o=>o.p.dimensions?.[d.key]?.applicable).map(o=>({x:x(o.i),y:y(o.p.dimensions[d.key].score)}));
+          return <path key={d.key} d={smoothPath(coords)} fill="none" stroke={d.color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round"/>;
+        })}
+        {DIM_META.filter(d=>enabled[d.key]).map(d=>points.map((p,i)=>{
+          const dd=p.dimensions?.[d.key]; if(!dd?.applicable) return null;
+          return <circle key={d.key+p.id} cx={x(i)} cy={y(dd.score)} r={hover===i?5:3.5} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5}/>;
+        }))}
+        {points.map((p,i)=>(<g key={"h"+p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}><rect x={x(i)-16} y={0} width={32} height={H} fill="transparent"/><text x={x(i)} y={H-6} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text></g>))}
+      </svg>
+      {hover!=null&&points[hover]&&(
+        <Tooltip x={(x(hover)/W)*100} p={points[hover]} showDims enabled={enabled} />
+      )}
+    </div>
+  );
+}
+
+function Tooltip({ x, p, showDims, enabled }: { x: number; p: Point; showDims?: boolean; enabled?: Record<string,boolean> }) {
+  return (
+    <div style={{position:"absolute",left:`${x}%`,top:showDims?40:6,transform:"translateX(-50%)",background:"var(--surface-A)",
+      border:"1px solid var(--border-weak)",borderRadius:10,padding:"9px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.14)",
+      pointerEvents:"none",maxWidth:280,minWidth:180,zIndex:5}}>
+      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:SENT_COLOR[p.sentiment]}}/>
+        <span style={{fontSize:12,fontWeight:600,color:SENT_COLOR[p.sentiment]}}>{SENT_LABEL[p.sentiment]}</span>
+        <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text-disable)"}}>{p.dateLabel}</span>
+      </div>
+      {p.stage && <div style={{display:"inline-block",fontFamily:"var(--font-mono)",fontSize:9.5,textTransform:"uppercase",letterSpacing:"0.04em",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"2px 8px",marginBottom:5}}>{p.stage}</div>}
+      <div style={{fontSize:12,color:"var(--text-primary)",lineHeight:1.4,marginBottom:showDims?5:0}}>{p.title}</div>
+      {showDims ? (
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {DIM_META.filter(d=>enabled?.[d.key]).map(d=>{
+            const dd=p.dimensions?.[d.key];
+            return (
+              <div key={d.key} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11}}>
+                <span style={{color:d.color}}>{d.label}</span>
+                <span style={{fontFamily:"var(--font-mono)",color:"var(--text-secondary)"}}>{dd?.applicable?`${dd.score}/20`:"n/a"}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : p.reason && <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{p.reason}</div>}
     </div>
   );
 }
@@ -211,9 +272,7 @@ function DimRow({ label, d }: { label: string; d?: Dim }) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
         <span style={{fontSize:13,fontWeight:600,color:"var(--text-primary)"}}>{label}</span>
-        <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:d.applicable?dimColor(d.score):"var(--text-disable)"}}>
-          {d.applicable?`${d.score}/20`:"n/a yet"}
-        </span>
+        <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:d.applicable?dimColor(d.score):"var(--text-disable)"}}>{d.applicable?`${d.score}/20`:"n/a yet"}</span>
       </div>
       <div style={{height:6,borderRadius:99,background:"var(--surface-C)",overflow:"hidden"}}>
         <div style={{height:6,width:`${pct}%`,borderRadius:99,background:d.applicable?dimColor(d.score):"transparent",transition:"width 300ms"}}/>
@@ -225,6 +284,7 @@ function DimRow({ label, d }: { label: string; d?: Dim }) {
 }
 
 const msg: React.CSSProperties = { color:"var(--text-disable)", fontSize:13, fontFamily:"var(--font-mono)", padding:"20px 4px" };
+const chartTitle: React.CSSProperties = { fontFamily:"var(--font-mono)", fontSize:10.5, textTransform:"uppercase", letterSpacing:"0.07em", color:"var(--text-disable)", margin:"0 0 6px 8px" };
 function Card({ children }: { children: React.ReactNode }) {
   return <div style={{background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"16px 18px"}}>{children}</div>;
 }

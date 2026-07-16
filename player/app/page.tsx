@@ -358,7 +358,7 @@ export default function Page() {
         <DealInsights recordId={recordId} title={title} metadata={metadata} signals={signals} />
       ) : (
       /* BODY */
-      <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"200px 1fr 420px":"1fr 420px",gap:12,padding:"14px 18px 18px"}}>
+      <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"180px 1fr 380px":"1fr 380px",gap:12,padding:"14px 18px 18px"}}>
 
         {/* LEFT RAIL */}
         {(chapters.length>0||talkTime.length>0)&&(
