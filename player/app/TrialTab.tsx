@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { DimBar, Point, Dim, SENT_COLOR, scoreColor } from "./intel";
+import { DimBar, Point, Dim, SENT_COLOR, SENT_LABEL, SENT_ICON, scoreColor, smoothPath } from "./intel";
 
 interface Win { what: string; who: string; quote: string }
 interface Friction { what: string; type: string; severity: string; owner: string; status: string; who: string; quote: string }
@@ -32,12 +32,12 @@ const FRICTION_LABEL: Record<string, string> = {
 const SEV_ORDER: Record<string, number> = { blocker: 0, major: 1, minor: 2 };
 const SEV_COLOR: Record<string, string> = { blocker: "#e04b4a", major: "#ba7517", minor: "#9a9a9a" };
 
-const TRIAL_DIMS: { key: string; label: string }[] = [
-  { key: "activation", label: "Activation" },
-  { key: "use_case_progress", label: "Use-case progress" },
-  { key: "data_fit", label: "Data fit" },
-  { key: "team_engagement", label: "Team engagement" },
-  { key: "conversion_intent", label: "Conversion intent" },
+const TRIAL_DIMS: { key: string; label: string; color: string }[] = [
+  { key: "activation", label: "Activation", color: "#f4603e" },
+  { key: "use_case_progress", label: "Use-case progress", color: "#7f77dd" },
+  { key: "data_fit", label: "Data fit", color: "#378add" },
+  { key: "team_engagement", label: "Team engagement", color: "#639922" },
+  { key: "conversion_intent", label: "Conversion intent", color: "#ba7517" },
 ];
 
 const isTrialCall = (p: TPoint) => !!p.trial || /trial|evaluation/i.test(p.stage);
@@ -214,21 +214,48 @@ export default function TrialTab({ recordId }: { recordId: string | null }) {
           </Card>
         )}
 
-        {/* ── Trial call list ── */}
-        <div>
-          <Lbl>Trial calls ({trialCalls.length})</Lbl>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-            {trialCalls.map(p => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, background: "var(--surface-B)", border: "1px solid var(--border-weaker)" }}>
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: SENT_COLOR[p.sentiment], flexShrink: 0 }} />
-                <span style={{ ...mono, width: 52, flexShrink: 0 }}>{p.dateLabel || "—"}</span>
-                <span style={{ fontSize: 13, color: "var(--text-primary)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
-                {p.trial && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: verdictColor(p.trial.verdict), flexShrink: 0 }}>{p.trial.health} · {p.trial.verdict}</span>}
-                {p.score != null && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: scoreColor(p.score), width: 30, textAlign: "right", flexShrink: 0 }}>{p.score}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* ── Trial trends ── */}
+        {trialCalls.length >= 2 && (
+          <>
+            <TrialSentimentChart points={trialCalls} currentId={recordId} />
+            <TrialDimsChart points={trialCalls} currentId={recordId} />
+          </>
+        )}
+
+        {/* ── Trial call list (click to jump) ── */}
+        <TrialCallList points={trialCalls} currentId={recordId} />
+      </div>
+    </div>
+  );
+}
+
+function TrialCallList({ points, currentId }: { points: TPoint[]; currentId: string | null }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const jump = (p: TPoint) => {
+    if (p.id === currentId || !p.engagementId) return;
+    const qs = new URLSearchParams({ engagementId: p.engagementId, recordId: p.id });
+    window.location.href = `/?${qs.toString()}`;
+  };
+  return (
+    <div>
+      <Lbl>Trial calls ({points.length})</Lbl>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        {points.map((p, i) => {
+          const clickable = p.id !== currentId && !!p.engagementId;
+          return (
+            <div key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => jump(p)}
+              title={clickable ? "Open this call" : undefined}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, cursor: clickable ? "pointer" : "default", background: hover === i ? "var(--surface-C)" : (p.id === currentId ? "color-mix(in srgb,var(--accent) 7%,var(--surface-B))" : "var(--surface-B)"), border: `1px solid ${p.id === currentId ? "var(--accent)" : hover === i && clickable ? "var(--border-strong)" : "var(--border-weaker)"}`, transition: "background 120ms,border-color 120ms" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: SENT_COLOR[p.sentiment], flexShrink: 0 }} />
+              <span style={{ ...mono, width: 52, flexShrink: 0 }}>{p.dateLabel || "—"}</span>
+              <span style={{ fontSize: 13, color: "var(--text-primary)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
+              {p.id === currentId && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 99, padding: "2px 7px", flexShrink: 0 }}>This call</span>}
+              {p.trial && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: verdictColor(p.trial.verdict), flexShrink: 0 }}>{p.trial.health} · {p.trial.verdict}</span>}
+              {p.score != null && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: scoreColor(p.score), width: 30, textAlign: "right", flexShrink: 0 }}>{p.score}</span>}
+              <span style={{ fontSize: 13, color: clickable ? "var(--text-secondary)" : "transparent", flexShrink: 0, opacity: hover === i ? 1 : 0.45, transition: "opacity 120ms" }}>↗</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -303,6 +330,142 @@ function ImpactStat({ label, before, after, fmt }: { label: string; before: numb
         <span style={{ fontSize: 13, fontWeight: 700, color: col }}>{d > 0 ? `+${d}` : d}</span>
       </div>
       <div style={{ fontSize: 10.5, color: "var(--text-disable)", marginTop: 2, fontFamily: "var(--font-mono)" }}>pre-trial avg → since trial start</div>
+    </div>
+  );
+}
+
+// ─── Trial charts ────────────────────────────────────────────────────────────
+const PASTEL = "#7bc9a6";
+function clampTip(pct: number): number { return Math.min(83, Math.max(17, pct)); }
+const tipBox: React.CSSProperties = { position: "absolute", top: 8, transform: "translateX(-50%)", background: "var(--surface-A)", border: "1px solid var(--border-weak)", borderRadius: 10, padding: "10px 14px", boxShadow: "0 6px 24px rgba(0,0,0,0.16)", pointerEvents: "none", width: 320, zIndex: 5 };
+
+function TrialSentimentChart({ points, currentId }: { points: TPoint[]; currentId: string | null }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 1040, H = 230, padX = 52, padY = 40; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
+  const SY: Record<string, number> = { positive: 1, neutral: 0, "at-risk": -1 };
+  const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
+  const y = (s: string) => padY + plotH * (1 - ((SY[s] ?? 0) + 1) / 2);
+  const known = points.map((p, i) => ({ p, i })).filter(o => o.p.sentiment !== "unknown");
+  const coords = known.map(o => ({ x: x(o.i), y: y(o.p.sentiment) }));
+  const line = smoothPath(coords); const baseline = padY + plotH;
+  const area = coords.length > 1 ? `${line} L ${coords[coords.length - 1].x} ${baseline} L ${coords[0].x} ${baseline} Z` : "";
+  return (
+    <div style={{ position: "relative", background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 14, padding: "14px 12px 8px" }}>
+      <p style={{ ...statLbl, margin: "0 6px 6px" }}>Trial sentiment over time</p>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs><linearGradient id="trialSentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={PASTEL} stopOpacity="0.28" /><stop offset="100%" stopColor={PASTEL} stopOpacity="0" /></linearGradient></defs>
+        {[["positive", "Positive"], ["neutral", "Neutral"], ["at-risk", "At-risk"]].map(([s, l]) => (
+          <g key={s}><line x1={padX} x2={W - padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s === "neutral" ? "0" : "3 4"} strokeWidth={1} /><text x={8} y={y(s) + 4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>
+        ))}
+        {area && <path d={area} fill="url(#trialSentFill)" stroke="none" />}
+        {line && <path d={line} fill="none" stroke={PASTEL} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
+        {points.map((p, i) => {
+          const cur = p.id === currentId;
+          if (p.sentiment === "unknown") return <g key={p.id}><circle cx={x(i)} cy={baseline + 6} r={3} fill="none" stroke="var(--border-strong)" strokeWidth={1.5} /><text x={x(i)} y={H - 8} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text></g>;
+          return <g key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY - 12} y2={H - 22} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />}
+            <circle cx={x(i)} cy={y(p.sentiment)} r={hover === i ? 9 : cur ? 8 : 6} fill={SENT_COLOR[p.sentiment]} stroke={cur ? "var(--accent)" : "var(--surface-A)"} strokeWidth={cur ? 3 : 2.5} />
+            <rect x={x(i) - 18} y={0} width={36} height={H} fill="transparent" />
+            <text x={x(i)} y={H - 8} fontSize={10} fill={cur ? "var(--accent)" : "var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text>
+          </g>;
+        })}
+      </svg>
+      {hover != null && points[hover] && (
+        <div style={{ ...tipBox, left: `${clampTip((x(hover) / W) * 100)}%` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: SENT_COLOR[points[hover].sentiment] }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: SENT_COLOR[points[hover].sentiment] }}>{SENT_ICON[points[hover].sentiment]} {SENT_LABEL[points[hover].sentiment]}</span>
+            <span style={{ ...mono }}>{points[hover].dateLabel}</span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.4 }}>{points[hover].title}{points[hover].reason ? ` — ${points[hover].reason}` : ""}</div>
+          {points[hover].posEvidence?.slice(0, 2).map((q, i) => <div key={"p" + i} style={{ fontSize: 11, color: "#1d9e75", lineHeight: 1.4, marginTop: 2 }}>“{q}”</div>)}
+          {points[hover].negEvidence?.slice(0, 2).map((q, i) => <div key={"n" + i} style={{ fontSize: 11, color: "#e04b4a", lineHeight: 1.4, marginTop: 2 }}>“{q}”</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrialDimsChart({ points, currentId }: { points: TPoint[]; currentId: string | null }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const [enabled, setEnabled] = useState<Record<string, boolean>>(
+    Object.fromEntries(TRIAL_DIMS.map(d => [d.key, d.key === "activation"]))
+  );
+  const W = 1040, H = 280, padX = 42, padY = 32; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
+  const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
+  const y = (v: number) => padY + plotH * (1 - v / 20);
+  const baseline = padY + plotH;
+  const dimOf = (p: TPoint, k: string): Dim | undefined => p.trial?.dimensions?.[k];
+  const enabledKeys = TRIAL_DIMS.filter(d => enabled[d.key]).map(d => d.key);
+  const single = enabledKeys.length === 1 ? enabledKeys[0] : null;
+  const allOn = TRIAL_DIMS.every(d => enabled[d.key]);
+  return (
+    <div style={{ position: "relative", background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 14, padding: "14px 12px 8px" }}>
+      <p style={{ ...statLbl, margin: "0 6px 6px" }}>Trial scorecard over time</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 6px 8px", alignItems: "center" }}>
+        {TRIAL_DIMS.map(d => (
+          <button key={d.key} onClick={() => setEnabled({ ...enabled, [d.key]: !enabled[d.key] })}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", padding: "5px 10px", borderRadius: 99, cursor: "pointer", transition: "all 140ms", border: `1px solid ${enabled[d.key] ? d.color : "var(--border-weaker)"}`, background: enabled[d.key] ? `color-mix(in srgb, ${d.color} 12%, transparent)` : "transparent", color: enabled[d.key] ? d.color : "var(--text-disable)" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: enabled[d.key] ? d.color : "var(--border-strong)" }} />{d.label}
+          </button>
+        ))}
+        <button onClick={() => setEnabled(Object.fromEntries(TRIAL_DIMS.map(d => [d.key, !allOn])))}
+          style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", padding: "5px 10px", borderRadius: 99, cursor: "pointer", border: "1px solid var(--border-weak)", background: "transparent", color: "var(--text-secondary)" }}>
+          {allOn ? "Deselect all" : "Select all"}
+        </button>
+      </div>
+      {single && <p style={{ fontSize: 11.5, color: "var(--text-disable)", margin: "0 0 6px 8px" }}>Showing {TRIAL_DIMS.find(d => d.key === single)!.label} only — hover a point for the evidence.</p>}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs>{single && <linearGradient id="trialDimFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={TRIAL_DIMS.find(d => d.key === single)!.color} stopOpacity="0.24" /><stop offset="100%" stopColor={TRIAL_DIMS.find(d => d.key === single)!.color} stopOpacity="0" /></linearGradient>}</defs>
+        {[0, 5, 10, 15, 20].map(v => (<g key={v}><line x1={padX} x2={W - padX} y1={y(v)} y2={y(v)} stroke="var(--border-weaker)" strokeWidth={1} /><text x={8} y={y(v) + 3} fontSize={9} fill="var(--text-disable)" fontFamily="var(--font-mono)">{v}</text></g>))}
+        {single && (() => {
+          const coords = points.map((p, i) => ({ d: dimOf(p, single), i })).filter(o => o.d?.applicable).map(o => ({ x: x(o.i), y: y(o.d!.score) }));
+          if (coords.length < 2) return null;
+          const l = smoothPath(coords);
+          return <path d={`${l} L ${coords[coords.length - 1].x} ${baseline} L ${coords[0].x} ${baseline} Z`} fill="url(#trialDimFill)" stroke="none" />;
+        })()}
+        {TRIAL_DIMS.filter(d => enabled[d.key]).map(d => {
+          const coords = points.map((p, i) => ({ dd: dimOf(p, d.key), i })).filter(o => o.dd?.applicable).map(o => ({ x: x(o.i), y: y(o.dd!.score) }));
+          return <path key={d.key} d={smoothPath(coords)} fill="none" stroke={d.color} strokeWidth={single ? 2.8 : 2.2} strokeLinejoin="round" strokeLinecap="round" />;
+        })}
+        {TRIAL_DIMS.filter(d => enabled[d.key]).map(d => points.map((p, i) => {
+          const dd = dimOf(p, d.key);
+          if (!dd || !dd.applicable) return <circle key={d.key + p.id} cx={x(i)} cy={baseline} r={2.5} fill="none" stroke="var(--border-strong)" strokeWidth={1} opacity={0.5} />;
+          return <circle key={d.key + p.id} cx={x(i)} cy={y(dd.score)} r={hover === i ? 5.5 : 4} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5} />;
+        }))}
+        {points.map((p, i) => {
+          const cur = p.id === currentId;
+          return <g key={"h" + p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY - 14} y2={H - 18} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />}
+            <rect x={x(i) - 18} y={0} width={36} height={H} fill="transparent" />
+            <text x={x(i)} y={H - 4} fontSize={10} fill={cur ? "var(--accent)" : "var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text>
+          </g>;
+        })}
+      </svg>
+      {hover != null && points[hover] && (
+        <div style={{ ...tipBox, top: 40, left: `${clampTip((x(hover) / W) * 100)}%` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>{points[hover].title}</span>
+            <span style={mono}>{points[hover].dateLabel}</span>
+          </div>
+          {single ? (() => {
+            const d = dimOf(points[hover], single); const meta = TRIAL_DIMS.find(m => m.key === single)!;
+            return <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: meta.color, marginBottom: 3 }}>{meta.label}: {d?.applicable ? `${d.score}/20` : "n/a"}{d?.note ? ` — ${d.note}` : ""}</div>
+              {d?.evidence?.slice(0, 3).map((q, i) => <div key={i} style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.45, marginTop: 2, fontStyle: "italic" }}>“{q}”</div>)}
+              {(!d?.evidence || d.evidence.length === 0) && <div style={{ fontSize: 11, color: "var(--text-disable)" }}>No evidence for this dimension on this call.</div>}
+            </div>;
+          })() : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {TRIAL_DIMS.filter(d => enabled[d.key]).map(d => { const dd = dimOf(points[hover], d.key); return (
+                <div key={d.key} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11 }}>
+                  <span style={{ color: d.color }}>{d.label}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{dd?.applicable ? `${dd.score}/20` : "n/a"}</span>
+                </div>); })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
