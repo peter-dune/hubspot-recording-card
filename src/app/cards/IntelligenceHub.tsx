@@ -187,7 +187,8 @@ const IntelligenceHubCard = () => {
   const sentiment = useMemo(() => parseSentiment(short), [short]);
 
   // GPT-scored with rationale when available; heuristic fallback otherwise
-  const gptScore = useMemo<{ score: number; label: string; rationale: string } | null>(() => {
+  type Dim = { score: number; applicable: boolean; note: string };
+  const gptScore = useMemo<{ score: number; label: string; rationale: string; dimensions?: Record<string, Dim> } | null>(() => {
     try {
       const p = JSON.parse(props.call_score || "");
       return typeof p.score === "number" ? p : null;
@@ -256,7 +257,7 @@ const IntelligenceHubCard = () => {
               onClick={() => {}}
               overlay={
                 <Tooltip placement="bottom">
-                  AI-scored from the transcript across four dimensions, 0–25 each: buying intent, decision path (right people + clear approvals), momentum (commitments with owners and dates), and risk (objections, competitors, budget). Judged from the customer's words, weighing how the call ended.
+                  AI-scored from the transcript on the BANT framework plus a Dune Fit/Usage dimension — Budget, Authority, Need, Timeline, and Fit/Usage (trial/usage depth, chains & datasets, technical enablement). Each 0–20; dimensions that are premature for the call stage are excluded and the total is rescaled to 100. Judged from the customer's words.
                 </Tooltip>
               }
             >
@@ -270,6 +271,28 @@ const IntelligenceHubCard = () => {
           {rationale
             ? <Text>{rationale}</Text>
             : drivers.length > 0 && <Text variant="microcopy">{drivers.join("   ")}</Text>}
+
+          {/* BANT + Fit breakdown */}
+          {gptScore?.dimensions && (
+            <Flex direction="column" gap="extra-small">
+              <Divider />
+              {([["budget","Budget"],["authority","Authority"],["need","Need"],["timeline","Timeline"],["fit_usage","Fit / Usage"]] as const).map(([key,label])=>{
+                const d = gptScore.dimensions?.[key];
+                if (!d) return null;
+                return (
+                  <Flex key={key} direction="row" gap="small" align="center" justify="between">
+                    <Flex direction="row" gap="small" align="center">
+                      <Text format={{ fontWeight: "bold" }} variant="microcopy">{label}</Text>
+                      {d.applicable
+                        ? <Tag variant={d.score >= 14 ? "success" : d.score >= 8 ? "warning" : "error"}>{d.score}/20</Tag>
+                        : <Tag>n/a yet</Tag>}
+                    </Flex>
+                    {d.note && <Text variant="microcopy">{d.note}</Text>}
+                  </Flex>
+                );
+              })}
+            </Flex>
+          )}
         </Flex>
       </Tile>
 
