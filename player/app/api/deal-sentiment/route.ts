@@ -64,20 +64,31 @@ export async function GET(req: NextRequest) {
 
   const points = results.map((r: { id: string; properties: Record<string, string> }) => {
     const p = r.properties || {};
-    let sentiment = "unknown", reason = "";
+    let sentiment = "unknown", reason = "", posEvidence: string[] = [], negEvidence: string[] = [], confidence = "";
     try {
       const s = JSON.parse(p.call_sentiment || "{}");
-      if (s.sentiment) { sentiment = s.sentiment; reason = s.reason || ""; }
+      if (s.sentiment) {
+        sentiment = s.sentiment; reason = s.reason || ""; confidence = s.confidence || "";
+        posEvidence = Array.isArray(s.positiveEvidence) ? s.positiveEvidence.map(String) : [];
+        negEvidence = Array.isArray(s.negativeEvidence) ? s.negativeEvidence.map(String) : [];
+      }
     } catch {}
     let score: number | null = null;
-    let dimensions: Record<string, { score: number; applicable: boolean }> = {};
+    let rationale = "";
+    const dimensions: Record<string, { score: number; applicable: boolean; note: string; evidence: string[] }> = {};
     try {
       const sc = JSON.parse(p.call_score || "{}");
       if (typeof sc.score === "number") score = sc.score;
+      rationale = sc.rationale || "";
       if (sc.dimensions) {
         for (const k of ["budget", "authority", "need", "timeline", "fit_usage"]) {
           const d = sc.dimensions[k];
-          if (d) dimensions[k] = { score: Number(d.score) || 0, applicable: d.applicable !== false };
+          if (d) dimensions[k] = {
+            score: Number(d.score) || 0,
+            applicable: d.applicable !== false,
+            note: String(d.note || ""),
+            evidence: Array.isArray(d.evidence) ? d.evidence.map(String) : (d.evidence ? [String(d.evidence)] : []),
+          };
         }
       }
     } catch {}
@@ -87,11 +98,9 @@ export async function GET(req: NextRequest) {
       title: p.call_title || p.call_name || "Call",
       dateMs,
       dateLabel: dateLabel(dateMs),
-      sentiment,
-      reason,
+      sentiment, reason, confidence, posEvidence, negEvidence,
       stage: p.call_stage || "",
-      score,
-      dimensions,
+      score, rationale, dimensions,
     };
   }).sort((a: { dateMs: number }, b: { dateMs: number }) => a.dateMs - b.dateMs);
 

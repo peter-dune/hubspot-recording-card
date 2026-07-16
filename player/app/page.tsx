@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode } from "react";
 import DealInsights from "./DealInsights";
+import FirstDemo from "./FirstDemo";
 
 /* ── types ─────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
@@ -262,7 +263,7 @@ export default function Page() {
   const [error,setError]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [recordId,setRecordId]=useState<string|null>(null);
-  const [tab,setTab]=useState<"recording"|"insights">("recording");
+  const [tab,setTab]=useState<"recording"|"insights"|"firstdemo">("recording");
 
   const videoRef=useRef<HTMLVideoElement>(null);
   const [playing,setPlaying]=useState(false);
@@ -343,7 +344,7 @@ export default function Page() {
 
       {/* TAB BAR */}
       <div style={{display:"flex",gap:2,padding:"10px 18px 0",flexShrink:0}}>
-        {([["recording","Recording"],["insights","Deal Insights"]] as const).map(([id,label])=>(
+        {([["recording","Recording"],["insights","Deal Insights"],["firstdemo","First Demo"]] as const).map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)} style={{
             appearance:"none",border:"none",background:"transparent",cursor:"pointer",
             fontFamily:"var(--font-mono)",fontSize:12,letterSpacing:"0.03em",padding:"9px 16px",
@@ -354,9 +355,13 @@ export default function Page() {
         ))}
       </div>
 
-      {tab==="insights" ? (
+      {tab==="insights" && (
         <DealInsights recordId={recordId} title={title} metadata={metadata} signals={signals} />
-      ) : (
+      )}
+      {tab==="firstdemo" && (
+        <FirstDemo recordId={recordId} title={title} />
+      )}
+      {tab==="recording" && (
       /* BODY */
       <div style={{flex:1,minHeight:0,display:"grid",gridTemplateColumns:(chapters.length>0||talkTime.length>0)?"180px 1fr 380px":"1fr 380px",gap:12,padding:"14px 18px 18px"}}>
 

@@ -1,50 +1,15 @@
 "use client";
 
 /**
- * Deal Insights tab — the full intelligence view for the modal.
- * Two columns on wide modals: left = this call's score + BANT/Fit breakdown +
- * sentiment; right = deal trends (sentiment over time, BANT+Fit over time with
- * per-metric toggles) + call ledger. Stage/category is surfaced in tooltips
- * so you can see where deals fall off.
+ * Deal Insights tab — decision-grade intelligence view.
+ * This call's score + BANT breakdown (with per-dimension evidence tooltips) +
+ * sentiment (with evidence), then deal-level trends: sentiment over time and
+ * BANT+Fit over time (per-metric toggles, single-metric evidence + glow),
+ * each with a whole-deal summary. Data from /api/deal-sentiment (Opus 4.8).
  */
 
 import { useEffect, useMemo, useState } from "react";
-
-type DimScores = Record<string, { score: number; applicable: boolean }>;
-interface Point {
-  id: string; title: string; dateMs: number; dateLabel: string;
-  sentiment: "positive" | "neutral" | "at-risk" | "unknown";
-  reason: string; stage: string; score: number | null;
-  dimensions: DimScores;
-}
-type Dim = { score: number; applicable: boolean; note: string; evidence?: string };
-
-const SENT_COLOR: Record<string, string> = { positive: "#1d9e75", neutral: "#b0873d", "at-risk": "#e04b4a", unknown: "#9a9a9a" };
-const SENT_LABEL: Record<string, string> = { positive: "Positive", neutral: "Neutral", "at-risk": "At-risk", unknown: "—" };
-const SENT_ICON: Record<string, string> = { positive: "🌱", neutral: "🌤️", "at-risk": "🌧️", unknown: "" };
-const BANT4: [string, string][] = [["budget","Budget"],["authority","Authority"],["need","Need"],["timeline","Timeline"]];
-
-// BANT+F line colours (used in the trajectory chart + toggles)
-const DIM_META: { key: string; label: string; color: string }[] = [
-  { key: "budget", label: "Budget", color: "#639922" },
-  { key: "authority", label: "Authority", color: "#378add" },
-  { key: "need", label: "Need", color: "#7f77dd" },
-  { key: "timeline", label: "Timeline", color: "#ba7517" },
-  { key: "fit_usage", label: "Fit / Usage", color: "#f4603e" },
-];
-
-function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length === 0) return "";
-  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i-1]||pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2]||p2;
-    d += ` C ${p1.x+(p2.x-p0.x)/6} ${p1.y+(p2.y-p0.y)/6} ${p2.x-(p3.x-p1.x)/6} ${p2.y-(p3.y-p1.y)/6} ${p2.x} ${p2.y}`;
-  }
-  return d;
-}
-function scoreColor(s: number) { return s>=70?"#1d9e75":s>=55?"#639922":s>=40?"#b0873d":"#e04b4a"; }
-function dimColor(s: number) { return s>=14?"#1d9e75":s>=8?"#b0873d":"#e04b4a"; }
+import { CallCard, Point, DIM_META, SENT_COLOR, SENT_LABEL, SENT_ICON, scoreColor, smoothPath, pointFromMetadata } from "./intel";
 
 export default function DealInsights({ recordId, title, metadata }: {
   recordId: string | null; title: string;
@@ -54,7 +19,7 @@ export default function DealInsights({ recordId, title, metadata }: {
   const [dealName, setDealName] = useState("");
   const [hover, setHover] = useState<number | null>(null);
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
-    Object.fromEntries(DIM_META.map(d => [d.key, true]))
+    Object.fromEntries(DIM_META.map(d => [d.key, d.key === "budget"])) // Budget on by default
   );
 
   useEffect(() => {
@@ -64,98 +29,28 @@ export default function DealInsights({ recordId, title, metadata }: {
       .catch(() => setPoints([]));
   }, [recordId]);
 
-  const score = useMemo(() => { try { return JSON.parse(metadata.call_score || "{}"); } catch { return {}; } }, [metadata.call_score]);
-  const sent = useMemo(() => { try { return JSON.parse(metadata.call_sentiment || "{}"); } catch { return {}; } }, [metadata.call_sentiment]);
-  const stage = metadata.call_stage || sent.stage || "";
-  const isFirstDemo = /first demo/i.test(stage);
-  const sentiment = (sent.sentiment as string) || "unknown";
-  const dims: Record<string, Dim> | undefined = score.dimensions;
+  const current = useMemo(() => pointFromMetadata(metadata, title), [metadata, title]);
 
   return (
-    <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"22px 26px 36px"}}>
-      <div style={{maxWidth:1120,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",gap:16}}>
-
-        {/* Header — flags THIS call */}
-        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid var(--accent)",borderRadius:99,padding:"3px 9px"}}>This call</span>
-          <h2 style={{margin:0,fontSize:21,fontWeight:600,color:"var(--text-primary)"}}>{title}</h2>
-          {isFirstDemo && <Badge text="★ FIRST DEMO" bg="#f4603e" fg="#fff" />}
-          {stage && !isFirstDemo && <Badge text={stage.toUpperCase()} bg="var(--surface-C)" fg="var(--text-secondary)" />}
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "22px 26px 36px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={pill}>This call</span>
+          <h2 style={{ margin: 0, fontSize: 21, fontWeight: 600, color: "var(--text-primary)" }}>{title}</h2>
         </div>
 
-        {/* This call: score + sentiment */}
-        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 300px",gap:14}}>
-          <Card>
-            <Label>Call score · {score.framework || "BANT"}</Label>
-            {typeof score.score==="number" ? (
-              <>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:2}}>
-                  <span style={{fontSize:44,fontWeight:700,color:scoreColor(score.score),lineHeight:1}}>{score.score}</span>
-                  <span style={{fontSize:14,color:"var(--text-disable)"}}>/ 100</span>
-                  {score.label && <span style={{fontSize:13,fontWeight:600,color:scoreColor(score.score)}}>{score.label}</span>}
-                </div>
-                {score.rationale && <p style={{margin:"10px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
-              </>
-            ) : (
-              <>
-                <div style={{fontSize:18,fontWeight:600,marginTop:4,color:"var(--text-disable)"}}>{score.label || "Not scored yet"}</div>
-                {score.rationale && <p style={{margin:"8px 0 0",fontSize:13,lineHeight:1.5,color:"var(--text-secondary)"}}>{score.rationale}</p>}
-              </>
-            )}
-          </Card>
-          <Card>
-            <Label>Sentiment</Label>
-            <div style={{fontSize:24,fontWeight:700,marginTop:4,color:SENT_COLOR[sentiment]}}>{SENT_ICON[sentiment]} {SENT_LABEL[sentiment]}</div>
-            {sent.reason && <p style={{margin:"8px 0 0",fontSize:12,lineHeight:1.45,color:"var(--text-secondary)"}}>{sent.reason}</p>}
-            {sent.confidence && <p style={{margin:"6px 0 0",fontSize:11,color:"var(--text-disable)"}}>Confidence: {sent.confidence}</p>}
-          </Card>
-        </div>
+        {/* This call's intelligence */}
+        <CallCard point={current} />
 
-        {/* BANT breakdown — full width, two columns of dimensions */}
-        {dims && (
-          <Card>
-            <Label>Qualification breakdown · BANT</Label>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:"16px 32px",marginTop:12}}>
-              {BANT4.map(([key,label])=> <DimRow key={key} label={label} d={dims[key]} />)}
-            </div>
-            {dims.fit_usage && (
-              <>
-                <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 14px"}}>
-                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
-                  <span style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--text-disable)"}}>Dune signal</span>
-                  <div style={{flex:1,height:1,background:"var(--border-weak)"}}/>
-                </div>
-                <DimRow label="Fit / Usage" d={dims.fit_usage} />
-              </>
-            )}
-          </Card>
-        )}
-
-        {/* Deal trends — full width, roomy */}
-        <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:14}}>
+        {/* Deal trends */}
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 16 }}>
           <Label>Deal · {dealName || title}</Label>
           {!points ? <p style={msg}>Loading deal timeline…</p>
-            : points.length===0 ? <p style={msg}>No processed calls on this deal yet.</p>
+            : points.length === 0 ? <p style={msg}>No processed calls on this deal yet.</p>
             : <>
                 <SentimentChart points={points} hover={hover} setHover={setHover} currentId={recordId} />
                 <BantChart points={points} enabled={enabled} setEnabled={setEnabled} hover={hover} setHover={setHover} currentId={recordId} />
-                <div>
-                  <Label>Calls on this deal ({points.length})</Label>
-                  <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
-                    {points.map((p,i)=>(
-                      <div key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)}
-                        style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
-                          background:hover===i?"var(--surface-C)":(p.id===recordId?"color-mix(in srgb,var(--accent) 7%,var(--surface-B))":"var(--surface-B)"),border:`1px solid ${p.id===recordId?"var(--accent)":"var(--border-weaker)"}`,transition:"background 120ms"}}>
-                        <span style={{width:9,height:9,borderRadius:"50%",background:SENT_COLOR[p.sentiment],flexShrink:0}}/>
-                        <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text-disable)",width:52,flexShrink:0}}>{p.dateLabel||"—"}</span>
-                        <span style={{fontSize:13,color:"var(--text-primary)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
-                        {p.id===recordId&&<span style={{fontFamily:"var(--font-mono)",fontSize:9.5,textTransform:"uppercase",color:"var(--accent)",border:"1px solid var(--accent)",borderRadius:99,padding:"2px 7px",flexShrink:0}}>This call</span>}
-                        {p.stage&&<span style={{fontFamily:"var(--font-mono)",fontSize:10,textTransform:"uppercase",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"3px 9px",flexShrink:0}}>{p.stage}</span>}
-                        {p.score!=null&&<span style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:scoreColor(p.score),width:30,textAlign:"right",flexShrink:0}}>{p.score}</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <Ledger points={points} hover={hover} setHover={setHover} currentId={recordId} />
               </>}
         </div>
       </div>
@@ -163,151 +58,219 @@ export default function DealInsights({ recordId, title, metadata }: {
   );
 }
 
-function SentimentChart({ points, hover, setHover, currentId }: { points: Point[]; hover: number|null; setHover:(i:number|null)=>void; currentId:string|null }) {
-  const W=1040,H=250,padX=52,padY=40; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
-  const SY:Record<string,number>={positive:1,neutral:0,"at-risk":-1};
-  const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
-  const y=(s:string)=>padY+plotH*(1-((SY[s]??0)+1)/2);
-  const known=points.map((p,i)=>({p,i})).filter(o=>o.p.sentiment!=="unknown");
-  const coords=known.map(o=>({x:x(o.i),y:y(o.p.sentiment)}));
-  const line=smoothPath(coords); const baseline=padY+plotH;
-  const area=coords.length>1?`${line} L ${coords[coords.length-1].x} ${baseline} L ${coords[0].x} ${baseline} Z`:"";
-  const rows=[["positive","Positive"],["neutral","Neutral"],["at-risk","At-risk"]];
+// ─── Sentiment over time (pastel green) ──────────────────────────────────────
+const PASTEL = "#7bc9a6";
+function SentimentChart({ points, hover, setHover, currentId }: { points: Point[]; hover: number | null; setHover: (i: number | null) => void; currentId: string | null }) {
+  const W = 1040, H = 250, padX = 52, padY = 44; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
+  const SY: Record<string, number> = { positive: 1, neutral: 0, "at-risk": -1 };
+  const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
+  const y = (s: string) => padY + plotH * (1 - ((SY[s] ?? 0) + 1) / 2);
+  const known = points.map((p, i) => ({ p, i })).filter(o => o.p.sentiment !== "unknown");
+  const coords = known.map(o => ({ x: x(o.i), y: y(o.p.sentiment) }));
+  const line = smoothPath(coords); const baseline = padY + plotH;
+  const area = coords.length > 1 ? `${line} L ${coords[coords.length - 1].x} ${baseline} L ${coords[0].x} ${baseline} Z` : "";
+  const summary = useMemo(() => sentimentSummary(points), [points]);
+
   return (
-    <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px"}}>
-      <p style={chartTitle}>Sentiment over time</p>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
-        <defs><linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22"/><stop offset="100%" stopColor="var(--accent)" stopOpacity="0"/></linearGradient></defs>
-        {rows.map(([s,l])=>(<g key={s}><line x1={padX} x2={W-padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s==="neutral"?"0":"3 4"} strokeWidth={1}/><text x={8} y={y(s)+4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>))}
-        {area&&<path d={area} fill="url(#sentFill)" stroke="none"/>}
-        {line&&<path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
-        {points.map((p,i)=>{
-          const cur=p.id===currentId;
-          return (
-          <g key={p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
-            {cur && <line x1={x(i)} x2={x(i)} y1={padY-14} y2={H-24} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5}/>}
-            {cur && <circle cx={x(i)} cy={y(p.sentiment)} r={13} fill="none" stroke="var(--accent)" strokeWidth={1.5} opacity={0.4}/>}
-            <circle cx={x(i)} cy={y(p.sentiment)} r={hover===i?9:cur?8:5.5} fill={SENT_COLOR[p.sentiment]} stroke={cur?"var(--accent)":"var(--surface-A)"} strokeWidth={cur?3:2.5}/>
-            {cur && <text x={x(i)} y={padY-20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
-            <rect x={x(i)-18} y={0} width={36} height={H} fill="transparent"/>
-            <text x={x(i)} y={H-8} fontSize={10} fill={cur?"var(--accent)":"var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
-          </g>
-        );})}
+    <ChartCard title="Sentiment over time" summary={summary}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs><linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={PASTEL} stopOpacity="0.28" /><stop offset="100%" stopColor={PASTEL} stopOpacity="0" /></linearGradient></defs>
+        {[["positive", "Positive"], ["neutral", "Neutral"], ["at-risk", "At-risk"]].map(([s, l]) => (
+          <g key={s}><line x1={padX} x2={W - padX} y1={y(s)} y2={y(s)} stroke="var(--border-weaker)" strokeDasharray={s === "neutral" ? "0" : "3 4"} strokeWidth={1} /><text x={8} y={y(s) + 4} fontSize={11} fill={SENT_COLOR[s]} fontFamily="var(--font-mono)">{l}</text></g>
+        ))}
+        {area && <path d={area} fill="url(#sentFill)" stroke="none" />}
+        {line && <path d={line} fill="none" stroke={PASTEL} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
+        {points.map((p, i) => {
+          const cur = p.id === currentId;
+          if (p.sentiment === "unknown") { // no reading — small grey tick at baseline, never an orphan on the line
+            return <g key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <circle cx={x(i)} cy={baseline + 6} r={3} fill="none" stroke="var(--border-strong)" strokeWidth={1.5} />
+              <text x={x(i)} y={H - 8} fontSize={10} fill="var(--text-disable)" textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text>
+            </g>;
+          }
+          return <g key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY - 14} y2={H - 24} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />}
+            {cur && <text x={x(i)} y={padY - 20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
+            <circle cx={x(i)} cy={y(p.sentiment)} r={hover === i ? 9 : cur ? 8 : 6} fill={SENT_COLOR[p.sentiment]} stroke={cur ? "var(--accent)" : "var(--surface-A)"} strokeWidth={cur ? 3 : 2.5} />
+            <rect x={x(i) - 18} y={0} width={36} height={H} fill="transparent" />
+            <text x={x(i)} y={H - 8} fontSize={10} fill={cur ? "var(--accent)" : "var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text>
+          </g>;
+        })}
       </svg>
-      {hover!=null&&points[hover]&&(
-        <Tooltip x={(x(hover)/W)*100} p={points[hover]} />
-      )}
+      {hover != null && points[hover] && <SentimentTip x={(x(hover) / W) * 100} p={points[hover]} />}
+    </ChartCard>
+  );
+}
+
+function SentimentTip({ x, p }: { x: number; p: Point }) {
+  return (
+    <div style={{ ...tipBox, left: `${x}%` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4, flexWrap: "wrap" }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: SENT_COLOR[p.sentiment] }} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: SENT_COLOR[p.sentiment] }}>{SENT_ICON[p.sentiment]} {SENT_LABEL[p.sentiment]}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-disable)" }}>{p.dateLabel}{p.confidence ? ` · ${p.confidence}` : ""}</span>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.4, marginBottom: 5 }}>{p.title}{p.reason ? ` — ${p.reason}` : ""}</div>
+      {p.posEvidence?.slice(0, 3).map((q, i) => <div key={"p" + i} style={{ fontSize: 11, color: "#1d9e75", lineHeight: 1.4, marginTop: 2 }}>“{q}”</div>)}
+      {p.negEvidence?.slice(0, 2).map((q, i) => <div key={"n" + i} style={{ fontSize: 11, color: "#e04b4a", lineHeight: 1.4, marginTop: 2 }}>“{q}”</div>)}
     </div>
   );
 }
 
+// ─── BANT + Fit over time ────────────────────────────────────────────────────
 function BantChart({ points, enabled, setEnabled, hover, setHover, currentId }: {
-  points: Point[]; enabled: Record<string,boolean>; setEnabled:(e:Record<string,boolean>)=>void;
-  hover: number|null; setHover:(i:number|null)=>void; currentId:string|null;
+  points: Point[]; enabled: Record<string, boolean>; setEnabled: (e: Record<string, boolean>) => void;
+  hover: number | null; setHover: (i: number | null) => void; currentId: string | null;
 }) {
-  const W=1040,H=300,padX=42,padY=34; const plotW=W-padX*2,plotH=H-padY*2; const n=points.length;
-  const x=(i:number)=>n===1?padX+plotW/2:padX+(plotW*i)/(n-1);
-  const y=(v:number)=>padY+plotH*(1-v/20);
-  const scoredCount=points.filter(p=>Object.values(p.dimensions||{}).some(d=>d.applicable)).length;
+  const W = 1040, H = 300, padX = 42, padY = 34; const plotW = W - padX * 2, plotH = H - padY * 2; const n = points.length;
+  const x = (i: number) => n === 1 ? padX + plotW / 2 : padX + (plotW * i) / (n - 1);
+  const y = (v: number) => padY + plotH * (1 - v / 20);
+  const enabledKeys = DIM_META.filter(d => enabled[d.key]).map(d => d.key);
+  const single = enabledKeys.length === 1 ? enabledKeys[0] : null;
+  const allOn = DIM_META.every(d => enabled[d.key]);
+  const summary = useMemo(() => bantSummary(points), [points]);
+  const baseline = padY + plotH;
+
   return (
-    <div style={{position:"relative",background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"14px 10px 6px"}}>
-      <p style={chartTitle}>BANT + Fit over time</p>
-      {scoredCount<2 && <p style={{fontSize:11.5,color:"var(--text-disable)",margin:"0 0 6px 8px"}}>Trend lines appear once 2+ calls on this deal have substantive scoring ({scoredCount} so far).</p>}
-      {/* toggles */}
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 6px 8px"}}>
-        {DIM_META.map(d=>(
-          <button key={d.key} onClick={()=>setEnabled({...enabled,[d.key]:!enabled[d.key]})}
-            style={{display:"inline-flex",alignItems:"center",gap:6,fontFamily:"var(--font-mono)",fontSize:10.5,letterSpacing:"0.02em",
-              textTransform:"uppercase",padding:"5px 10px",borderRadius:99,cursor:"pointer",transition:"all 140ms",
-              border:`1px solid ${enabled[d.key]?d.color:"var(--border-weaker)"}`,
-              background:enabled[d.key]?`color-mix(in srgb, ${d.color} 12%, transparent)`:"transparent",
-              color:enabled[d.key]?d.color:"var(--text-disable)"}}>
-            <span style={{width:8,height:8,borderRadius:2,background:enabled[d.key]?d.color:"var(--border-strong)"}}/>{d.label}
+    <ChartCard title="BANT + Fit over time" summary={summary}>
+      {/* toggles + select all */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 6px 8px", alignItems: "center" }}>
+        {DIM_META.map(d => (
+          <button key={d.key} onClick={() => setEnabled({ ...enabled, [d.key]: !enabled[d.key] })}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 99, cursor: "pointer", transition: "all 140ms", border: `1px solid ${enabled[d.key] ? d.color : "var(--border-weaker)"}`, background: enabled[d.key] ? `color-mix(in srgb, ${d.color} 12%, transparent)` : "transparent", color: enabled[d.key] ? d.color : "var(--text-disable)" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: enabled[d.key] ? d.color : "var(--border-strong)" }} />{d.label}
           </button>
         ))}
+        <button onClick={() => setEnabled(Object.fromEntries(DIM_META.map(d => [d.key, !allOn])))}
+          style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", padding: "5px 10px", borderRadius: 99, cursor: "pointer", border: "1px solid var(--border-weak)", background: "transparent", color: "var(--text-secondary)" }}>
+          {allOn ? "Deselect all" : "Select all"}
+        </button>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
-        {[0,5,10,15,20].map(v=>(<g key={v}><line x1={padX} x2={W-padX} y1={y(v)} y2={y(v)} stroke="var(--border-weaker)" strokeWidth={1}/><text x={8} y={y(v)+3} fontSize={9} fill="var(--text-disable)" fontFamily="var(--font-mono)">{v}</text></g>))}
-        {DIM_META.filter(d=>enabled[d.key]).map(d=>{
-          const coords=points.map((p,i)=>({p,i})).filter(o=>o.p.dimensions?.[d.key]?.applicable).map(o=>({x:x(o.i),y:y(o.p.dimensions[d.key].score)}));
-          return <path key={d.key} d={smoothPath(coords)} fill="none" stroke={d.color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round"/>;
+      {single && <p style={{ fontSize: 11.5, color: "var(--text-disable)", margin: "0 0 6px 8px" }}>Showing {DIM_META.find(d => d.key === single)!.label} only — hover a point for the evidence.</p>}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs>{single && <linearGradient id="dimFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={DIM_META.find(d => d.key === single)!.color} stopOpacity="0.24" /><stop offset="100%" stopColor={DIM_META.find(d => d.key === single)!.color} stopOpacity="0" /></linearGradient>}</defs>
+        {[0, 5, 10, 15, 20].map(v => (<g key={v}><line x1={padX} x2={W - padX} y1={y(v)} y2={y(v)} stroke="var(--border-weaker)" strokeWidth={1} /><text x={8} y={y(v) + 3} fontSize={9} fill="var(--text-disable)" fontFamily="var(--font-mono)">{v}</text></g>))}
+        {/* single-metric glow */}
+        {single && (() => {
+          const coords = points.map((p, i) => ({ p, i })).filter(o => o.p.dimensions?.[single]?.applicable).map(o => ({ x: x(o.i), y: y(o.p.dimensions[single].score) }));
+          if (coords.length < 2) return null;
+          const l = smoothPath(coords);
+          return <path d={`${l} L ${coords[coords.length - 1].x} ${baseline} L ${coords[0].x} ${baseline} Z`} fill="url(#dimFill)" stroke="none" />;
+        })()}
+        {DIM_META.filter(d => enabled[d.key]).map(d => {
+          const coords = points.map((p, i) => ({ p, i })).filter(o => o.p.dimensions?.[d.key]?.applicable).map(o => ({ x: x(o.i), y: y(o.p.dimensions[d.key].score) }));
+          return <path key={d.key} d={smoothPath(coords)} fill="none" stroke={d.color} strokeWidth={single ? 2.8 : 2.2} strokeLinejoin="round" strokeLinecap="round" />;
         })}
-        {DIM_META.filter(d=>enabled[d.key]).map(d=>points.map((p,i)=>{
-          const dd=p.dimensions?.[d.key]; if(!dd?.applicable) return null;
-          return <circle key={d.key+p.id} cx={x(i)} cy={y(dd.score)} r={hover===i?5:3.5} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5}/>;
+        {/* points: every call for every enabled dim (non-applicable = hollow baseline so each day shows) */}
+        {DIM_META.filter(d => enabled[d.key]).map(d => points.map((p, i) => {
+          const dd = p.dimensions?.[d.key];
+          if (!dd) return null;
+          if (!dd.applicable) return <circle key={d.key + p.id} cx={x(i)} cy={baseline} r={2.5} fill="none" stroke="var(--border-strong)" strokeWidth={1} opacity={0.5} />;
+          return <circle key={d.key + p.id} cx={x(i)} cy={y(dd.score)} r={hover === i ? 5.5 : 4} fill={d.color} stroke="var(--surface-A)" strokeWidth={1.5} />;
         }))}
-        {points.map((p,i)=>{
-          const cur=p.id===currentId;
-          return (<g key={"h"+p.id} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
-            {cur && <line x1={x(i)} x2={x(i)} y1={padY-16} y2={H-20} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5}/>}
-            {cur && <text x={x(i)} y={padY-20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
-            <rect x={x(i)-18} y={0} width={36} height={H} fill="transparent"/>
-            <text x={x(i)} y={H-4} fontSize={10} fill={cur?"var(--accent)":"var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel||""}</text>
-          </g>);
+        {points.map((p, i) => {
+          const cur = p.id === currentId;
+          return <g key={"h" + p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
+            {cur && <line x1={x(i)} x2={x(i)} y1={padY - 16} y2={H - 20} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />}
+            {cur && <text x={x(i)} y={padY - 20} fontSize={10} fontWeight={600} fill="var(--accent)" textAnchor="middle" fontFamily="var(--font-mono)">THIS CALL</text>}
+            <rect x={x(i) - 18} y={0} width={36} height={H} fill="transparent" />
+            <text x={x(i)} y={H - 4} fontSize={10} fill={cur ? "var(--accent)" : "var(--text-disable)"} textAnchor="middle" fontFamily="var(--font-mono)">{p.dateLabel || ""}</text>
+          </g>;
         })}
       </svg>
-      {hover!=null&&points[hover]&&(
-        <Tooltip x={(x(hover)/W)*100} p={points[hover]} showDims enabled={enabled} />
+      {hover != null && points[hover] && <BantTip x={(x(hover) / W) * 100} p={points[hover]} enabled={enabled} single={single} />}
+    </ChartCard>
+  );
+}
+
+function BantTip({ x, p, enabled, single }: { x: number; p: Point; enabled: Record<string, boolean>; single: string | null }) {
+  return (
+    <div style={{ ...tipBox, top: 40, left: `${x}%`, maxWidth: 320 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>{p.title}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-disable)" }}>{p.dateLabel}</span>
+      </div>
+      {single ? (() => {
+        const d = p.dimensions?.[single]; const meta = DIM_META.find(m => m.key === single)!;
+        return <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: meta.color, marginBottom: 3 }}>{meta.label}: {d?.applicable ? `${d.score}/20` : "n/a"}{d?.note ? ` — ${d.note}` : ""}</div>
+          {d?.evidence?.slice(0, 3).map((q, i) => <div key={i} style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.45, marginTop: 2, fontStyle: "italic" }}>“{q}”</div>)}
+          {(!d?.evidence || d.evidence.length === 0) && <div style={{ fontSize: 11, color: "var(--text-disable)" }}>No evidence for this dimension on this call.</div>}
+        </div>;
+      })() : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {DIM_META.filter(d => enabled[d.key]).map(d => { const dd = p.dimensions?.[d.key]; return (
+            <div key={d.key} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11 }}>
+              <span style={{ color: d.color }}>{d.label}</span>
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{dd?.applicable ? `${dd.score}/20` : "n/a"}</span>
+            </div>); })}
+        </div>
       )}
     </div>
   );
 }
 
-function Tooltip({ x, p, showDims, enabled }: { x: number; p: Point; showDims?: boolean; enabled?: Record<string,boolean> }) {
-  return (
-    <div style={{position:"absolute",left:`${x}%`,top:showDims?40:6,transform:"translateX(-50%)",background:"var(--surface-A)",
-      border:"1px solid var(--border-weak)",borderRadius:10,padding:"9px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.14)",
-      pointerEvents:"none",maxWidth:280,minWidth:180,zIndex:5}}>
-      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
-        <span style={{width:8,height:8,borderRadius:"50%",background:SENT_COLOR[p.sentiment]}}/>
-        <span style={{fontSize:12,fontWeight:600,color:SENT_COLOR[p.sentiment]}}>{SENT_LABEL[p.sentiment]}</span>
-        <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text-disable)"}}>{p.dateLabel}</span>
-      </div>
-      {p.stage && <div style={{display:"inline-block",fontFamily:"var(--font-mono)",fontSize:9.5,textTransform:"uppercase",letterSpacing:"0.04em",color:"var(--text-secondary)",background:"var(--surface-C)",borderRadius:99,padding:"2px 8px",marginBottom:5}}>{p.stage}</div>}
-      <div style={{fontSize:12,color:"var(--text-primary)",lineHeight:1.4,marginBottom:showDims?5:0}}>{p.title}</div>
-      {showDims ? (
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          {DIM_META.filter(d=>enabled?.[d.key]).map(d=>{
-            const dd=p.dimensions?.[d.key];
-            return (
-              <div key={d.key} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:11}}>
-                <span style={{color:d.color}}>{d.label}</span>
-                <span style={{fontFamily:"var(--font-mono)",color:"var(--text-secondary)"}}>{dd?.applicable?`${dd.score}/20`:"n/a"}</span>
-              </div>
-            );
-          })}
-        </div>
-      ) : p.reason && <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.4}}>{p.reason}</div>}
-    </div>
-  );
-}
-
-function DimRow({ label, d }: { label: string; d?: Dim }) {
-  if (!d) return null;
-  const pct = d.applicable ? (d.score/20)*100 : 0;
+function Ledger({ points, hover, setHover, currentId }: { points: Point[]; hover: number | null; setHover: (i: number | null) => void; currentId: string | null }) {
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
-        <span style={{fontSize:13,fontWeight:600,color:"var(--text-primary)"}}>{label}</span>
-        <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:d.applicable?dimColor(d.score):"var(--text-disable)"}}>{d.applicable?`${d.score}/20`:"n/a yet"}</span>
+      <Label>Calls on this deal ({points.length})</Label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        {points.map((p, i) => (
+          <div key={p.id} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+            style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, background: hover === i ? "var(--surface-C)" : (p.id === currentId ? "color-mix(in srgb,var(--accent) 7%,var(--surface-B))" : "var(--surface-B)"), border: `1px solid ${p.id === currentId ? "var(--accent)" : "var(--border-weaker)"}`, transition: "background 120ms" }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: SENT_COLOR[p.sentiment], flexShrink: 0 }} />
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-disable)", width: 52, flexShrink: 0 }}>{p.dateLabel || "—"}</span>
+            <span style={{ fontSize: 13, color: "var(--text-primary)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
+            {p.id === currentId && <span style={pillSm}>This call</span>}
+            {p.stage && <span style={stageTag}>{p.stage}</span>}
+            {p.score != null && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: scoreColor(p.score), width: 30, textAlign: "right", flexShrink: 0 }}>{p.score}</span>}
+          </div>
+        ))}
       </div>
-      <div style={{height:6,borderRadius:99,background:"var(--surface-C)",overflow:"hidden"}}>
-        <div style={{height:6,width:`${pct}%`,borderRadius:99,background:d.applicable?dimColor(d.score):"transparent",transition:"width 300ms"}}/>
-      </div>
-      {d.note && <p style={{margin:"6px 0 0",fontSize:12,color:"var(--text-secondary)",lineHeight:1.4}}>{d.note}</p>}
-      {d.evidence && <p style={{margin:"3px 0 0",fontSize:12,color:"var(--text-disable)",lineHeight:1.45,fontStyle:"italic"}}>“{d.evidence}”</p>}
     </div>
   );
 }
 
-const msg: React.CSSProperties = { color:"var(--text-disable)", fontSize:13, fontFamily:"var(--font-mono)", padding:"20px 4px" };
-const chartTitle: React.CSSProperties = { fontFamily:"var(--font-mono)", fontSize:10.5, textTransform:"uppercase", letterSpacing:"0.07em", color:"var(--text-disable)", margin:"0 0 6px 8px" };
-function Card({ children }: { children: React.ReactNode }) {
-  return <div style={{background:"var(--surface-B)",border:"1px solid var(--border-weaker)",borderRadius:14,padding:"16px 18px"}}>{children}</div>;
+// ─── deal-duration summaries (computed client-side) ─────────────────────────
+function sentimentSummary(points: Point[]): string {
+  const known = points.filter(p => p.sentiment !== "unknown");
+  if (known.length === 0) return "";
+  const c = { positive: 0, neutral: 0, "at-risk": 0 } as Record<string, number>;
+  known.forEach(p => { c[p.sentiment] = (c[p.sentiment] || 0) + 1; });
+  const first = known[0].sentiment, last = known[known.length - 1].sentiment;
+  const arc = first === last ? `${SENT_LABEL[last]} throughout` : `${SENT_LABEL[first]} → ${SENT_LABEL[last]}`;
+  return `${known.length} scored call${known.length > 1 ? "s" : ""} · ${arc}${c["at-risk"] ? ` · ${c["at-risk"]} at-risk` : ""}`;
 }
+function bantSummary(points: Point[]): string {
+  const parts: string[] = [];
+  for (const d of DIM_META) {
+    const vals = points.map(p => p.dimensions?.[d.key]).filter(x => x && x.applicable) as { score: number }[];
+    if (vals.length === 0) { if (d.key === "budget") parts.push("Budget not yet engaged"); continue; }
+    if (vals.length === 1) { parts.push(`${d.label} ${vals[0].score}`); continue; }
+    const delta = vals[vals.length - 1].score - vals[0].score;
+    const dir = delta > 2 ? "rising ↑" : delta < -2 ? "falling ↓" : "steady";
+    parts.push(`${d.label} ${dir}`);
+  }
+  return parts.join(" · ");
+}
+
+// ─── small shared UI ─────────────────────────────────────────────────────────
+const msg: React.CSSProperties = { color: "var(--text-disable)", fontSize: 13, fontFamily: "var(--font-mono)", padding: "20px 4px" };
+const pill: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 99, padding: "3px 9px" };
+const pillSm: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 99, padding: "2px 7px", flexShrink: 0 };
+const stageTag: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", color: "var(--text-secondary)", background: "var(--surface-C)", borderRadius: 99, padding: "3px 9px", flexShrink: 0 };
+const tipBox: React.CSSProperties = { position: "absolute", top: 6, transform: "translateX(-50%)", background: "var(--surface-A)", border: "1px solid var(--border-weak)", borderRadius: 10, padding: "9px 12px", boxShadow: "0 6px 24px rgba(0,0,0,0.16)", pointerEvents: "none", maxWidth: 300, minWidth: 190, zIndex: 5 };
 function Label({ children }: { children: React.ReactNode }) {
-  return <p style={{fontFamily:"var(--font-mono)",fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--text-disable)",margin:0}}>{children}</p>;
+  return <p style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)", margin: 0 }}>{children}</p>;
 }
-function Badge({ text, bg, fg }: { text: string; bg: string; fg: string }) {
-  return <span style={{fontFamily:"var(--font-mono)",fontSize:11,fontWeight:600,letterSpacing:"0.04em",color:fg,background:bg,borderRadius:99,padding:"4px 11px"}}>{text}</span>;
+function ChartCard({ title, summary, children }: { title: string; summary: string; children: React.ReactNode }) {
+  return (
+    <div style={{ position: "relative", background: "var(--surface-B)", border: "1px solid var(--border-weaker)", borderRadius: 14, padding: "14px 12px 8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 6px 6px", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-disable)" }}>{title}</span>
+        {summary && <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{summary}</span>}
+      </div>
+      {children}
+    </div>
+  );
 }
