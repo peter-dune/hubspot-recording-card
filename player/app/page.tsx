@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback, ChangeEvent, ReactNode
 import DealInsights from "./DealInsights";
 import FirstDemo from "./FirstDemo";
 import TrialTab from "./TrialTab";
+import RetroTab from "./RetroTab";
 
 /* ── types ─────────────────────────────────────────────────── */
 interface Segment { speaker: string; text: string; startsAt: number; endsAt: number; }
@@ -264,7 +265,7 @@ export default function Page() {
   const [error,setError]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [recordId,setRecordId]=useState<string|null>(null);
-  const [tab,setTab]=useState<"recording"|"insights"|"firstdemo"|"trial">("recording");
+  const [tab,setTab]=useState<"recording"|"insights"|"firstdemo"|"trial"|"retro">("recording");
 
   const videoRef=useRef<HTMLVideoElement>(null);
   const [playing,setPlaying]=useState(false);
@@ -345,7 +346,7 @@ export default function Page() {
 
       {/* TAB BAR */}
       <div style={{display:"flex",gap:2,padding:"10px 18px 0",flexShrink:0}}>
-        {([["recording","Recording"],["insights","Deal Insights"],["firstdemo","First Demo"],["trial","Trial"]] as const).map(([id,label])=>(
+        {([["recording","Recording"],["insights","Deal Insights"],["firstdemo","First Demo"],["trial","Trial"],["retro","Won/Lost"]] as const).map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)} style={{
             appearance:"none",border:"none",background:"transparent",cursor:"pointer",
             fontFamily:"var(--font-mono)",fontSize:12,letterSpacing:"0.03em",padding:"9px 16px",
@@ -364,6 +365,9 @@ export default function Page() {
       )}
       {tab==="trial" && (
         <TrialTab recordId={recordId} />
+      )}
+      {tab==="retro" && (
+        <RetroTab recordId={recordId} />
       )}
       {tab==="recording" && (
       /* BODY */
